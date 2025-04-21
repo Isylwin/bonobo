@@ -1,3 +1,7 @@
+use bonobo::bonobo_compile;
+
+mod bonobo;
+
 fn main() {
-    println!("Hello, world!");
+    bonobo_compile("examples/return_0.bnb");
 }
