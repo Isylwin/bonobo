@@ -27,6 +27,8 @@ fn read_file(file_name: &str) -> String {
 
     // Read the file contents into a string, returns `io::Result<usize>`
     let mut s = String::new();
-    if let Err(why) = file.read_to_string(&mut s) { panic!("couldn't read {}: {}", display, why) }
+    if let Err(why) = file.read_to_string(&mut s) {
+        panic!("couldn't read {}: {}", display, why)
+    }
     s
 }
