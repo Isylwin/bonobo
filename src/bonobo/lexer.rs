@@ -52,7 +52,7 @@ impl Lexer {
         x.push(0);
         let i = 0;
         let c = x[i];
-        Self { src: x, i: i, c: c }
+        Self { src: x, i, c }
     }
 
     fn advance(&mut self) {
