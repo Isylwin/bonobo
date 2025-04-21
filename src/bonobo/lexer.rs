@@ -27,7 +27,7 @@ impl Display for TokenId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Token {
     id: TokenId,
     index: usize,
@@ -139,4 +139,46 @@ impl Iterator for Lexer {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use rstest::*;
+
+    #[rstest]
+    #[case("(", TokenId::ParenOpen)]
+    #[case(")", TokenId::ParenClose)]
+    #[case("[", TokenId::BracketOpen)]
+    #[case("]", TokenId::BracketClose)]
+    #[case("{", TokenId::BraceOpen)]
+    #[case("}", TokenId::BraceClose)]
+    #[case(":", TokenId::Colon)]
+    #[case(";", TokenId::SemiColon)]
+    #[case(",", TokenId::Comma)]
+    fn test_lexer_single_token(#[case] src: String, #[case] expected: TokenId) {
+        let a = Token {
+            id: expected,
+            index: 0,
+        };
+        let result = Lexer::new(src).next();
+        assert_eq!(result, Some(a));
+    }
+
+    #[test]
+    fn test_lexer_token_identifier() {
+        let expected = Token {
+            id: TokenId::Id(b"main".to_vec()),
+            index: 0,
+        };
+        let result = Lexer::new("main\n".to_owned()).next();
+        assert_eq!(result, Some(expected));
+    }
+
+    #[test]
+    fn test_lexer_token_number() {
+        let expected = Token {
+            id: TokenId::Number(b"123".to_vec()),
+            index: 0,
+        };
+        let result = Lexer::new("123\n".to_owned()).next();
+        assert_eq!(result, Some(expected));
+    }
+}
