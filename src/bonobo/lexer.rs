@@ -1,7 +1,4 @@
 use std::fmt::Display;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum TokenId {
@@ -31,7 +28,7 @@ impl Display for TokenId {
 }
 
 #[derive(Debug)]
-struct Token {
+pub struct Token {
     id: TokenId,
     index: usize,
 }
@@ -42,7 +39,7 @@ impl Display for Token {
     }
 }
 
-struct Lexer {
+pub struct Lexer {
     src: Vec<u8>,
     i: usize,
     c: u8,
@@ -90,7 +87,7 @@ impl Lexer {
     fn parse_int(&mut self) -> Token {
         let start = self.i;
         while self.c.is_ascii_digit() {
-            self.advance();            
+            self.advance();
         }
         let end = self.i;
 
@@ -121,7 +118,7 @@ impl Iterator for Lexer {
         self.skip_whitespace();
 
         let c = self.c;
-        
+
         let token = match c {
             c if c.is_ascii_alphabetic() => self.parse_id(),
             c if c.is_ascii_digit() => self.parse_int(),
@@ -141,30 +138,5 @@ impl Iterator for Lexer {
     }
 }
 
-pub fn bonobo_compile(file_name: &str) {
-    let src = read_file(file_name);
-
-    for token in Lexer::new(src) {
-        println!("{}", token);
-    }
-}
-
-fn read_file(file_name: &str) -> String {
-    // Create a path to the desired file
-    let path = Path::new(file_name);
-    let display = path.display();
-
-    // Open the path in read-only mode, returns `io::Result<File>`
-    let mut file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", display, why),
-        Ok(file) => file,
-    };
-
-    // Read the file contents into a string, returns `io::Result<usize>`
-    let mut s = String::new();
-    match file.read_to_string(&mut s) {
-        Err(why) => panic!("couldn't read {}: {}", display, why),
-        Ok(_) => (),
-    }
-    s
-}
+#[cfg(test)]
+mod tests {}
