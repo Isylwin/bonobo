@@ -1,7 +1,7 @@
 use std::{fmt::Display, str::CharIndices};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum TokenId {
+pub enum TokenId {
     Id(String),
     Number(String),
     ParenOpen,
@@ -30,8 +30,8 @@ impl Display for TokenId {
 
 #[derive(Debug, PartialEq)]
 pub struct Token {
-    id: TokenId,
-    index: usize,
+    pub id: TokenId,
+    pub index: usize,
 }
 
 impl Display for Token {
@@ -40,6 +40,7 @@ impl Display for Token {
     }
 }
 
+#[derive(Debug)]
 pub struct Lexer<'a> {
     chars: CharIndices<'a>,
     curr: Option<(usize, char)>,
