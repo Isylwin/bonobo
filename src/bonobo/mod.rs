@@ -2,16 +2,22 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
+use ast::Parser;
 use lexer::Lexer;
 
+mod ast;
 mod lexer;
 
 pub fn bonobo_compile(file_name: &str) {
     let src = read_file(file_name);
-
+    let lexer = Lexer::new(&src);
     for token in Lexer::new(&src) {
         println!("{}", token);
     }
+
+    let mut parser = Parser::new(lexer);
+    let result = parser.parse();
+    println!("{:?}", result);
 }
 
 fn read_file(file_name: &str) -> String {
