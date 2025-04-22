@@ -1,9 +1,9 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::CharIndices};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum TokenId {
-    Id(Vec<u8>),
-    Number(Vec<u8>),
+    Id(String),
+    Number(String),
     ParenOpen,
     ParenClose,
     BracketOpen,
@@ -13,14 +13,15 @@ enum TokenId {
     Colon,
     SemiColon,
     Comma,
+    Unknown(char),
 }
 
 impl Display for TokenId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenId::Id(c) => write!(f, "ID({})", String::from_utf8(c.to_vec()).unwrap()),
+            TokenId::Id(c) => write!(f, "ID({})", c),
             TokenId::Number(c) => {
-                write!(f, "Number({})", String::from_utf8(c.to_vec()).unwrap())
+                write!(f, "Number({})", c)
             }
             _ => write!(f, "{:?}", self),
         }
@@ -39,102 +40,89 @@ impl Display for Token {
     }
 }
 
-pub struct Lexer {
-    src: Vec<u8>,
-    i: usize,
-    c: u8,
+pub struct Lexer<'a> {
+    chars: CharIndices<'a>,
+    curr: Option<(usize, char)>,
 }
 
-impl Lexer {
-    pub fn new(src: String) -> Self {
-        let mut x = src.into_bytes();
-        // Make sure it is null terminated...
-        x.push(0);
-        let i = 0;
-        let c = x[i];
-        Self { src: x, i, c }
+impl<'a> Lexer<'a> {
+    pub fn new(src: &'a str) -> Self {
+        let mut x = src.char_indices();
+        let c = x.next();
+        Self { chars: x, curr: c }
     }
 
     fn advance(&mut self) {
-        self.i += 1;
-        self.c = self.src[self.i];
+        self.curr = self.chars.next();
     }
 
-    fn parse_char(&mut self, token_id: TokenId) -> Token {
-        let index = self.i;
+    fn parse_id(&mut self) -> TokenId {
+        let mut value = String::new();
+        while let Some((_, ch)) = self.curr {
+            if ch.is_alphanumeric() || ch == '_' {
+                value.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        TokenId::Id(value)
+    }
+
+    fn parse_int(&mut self) -> TokenId {
+        let mut value = String::new();
+        while let Some((_, ch)) = self.curr {
+            if ch.is_numeric() {
+                value.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        TokenId::Number(value)
+    }
+
+    fn parse_char(&mut self, id: TokenId) -> TokenId {
         self.advance();
-        Token {
-            id: token_id,
-            index,
-        }
+        id
     }
 
-    fn parse_id(&mut self) -> Token {
-        let start = self.i;
-        while self.c.is_ascii_alphanumeric() {
-            self.advance();
-        }
-        let end = self.i;
-
-        let v = &self.src[start..end];
-
-        Token {
-            id: TokenId::Id(v.to_vec()),
-            index: start,
-        }
-    }
-
-    fn parse_int(&mut self) -> Token {
-        let start = self.i;
-        while self.c.is_ascii_digit() {
-            self.advance();
-        }
-        let end = self.i;
-
-        let v = &self.src[start..end];
-
-        Token {
-            id: TokenId::Number(v.to_vec()),
-            index: start,
-        }
-    }
-
-    fn skip_whitespace(&mut self) {
-        while self.c.is_ascii_whitespace() {
-            self.advance();
-        }
+    fn parse_unknown(&mut self, c: char) -> TokenId {
+        self.advance();
+        TokenId::Unknown(c)
     }
 }
 
-impl Iterator for Lexer {
+impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let size = self.src.len();
-        if self.c == 0 || self.i >= size {
-            return None;
+        while let Some((index, c)) = self.curr {
+            if c.is_whitespace() {
+                self.advance();
+                continue;
+            }
+
+            let token_id = match c {
+                c if c.is_ascii_alphabetic() => self.parse_id(),
+                c if c.is_ascii_digit() => self.parse_int(),
+                '(' => self.parse_char(TokenId::ParenOpen),
+                ')' => self.parse_char(TokenId::ParenClose),
+                '[' => self.parse_char(TokenId::BracketOpen),
+                ']' => self.parse_char(TokenId::BracketClose),
+                '{' => self.parse_char(TokenId::BraceOpen),
+                '}' => self.parse_char(TokenId::BraceClose),
+                ':' => self.parse_char(TokenId::Colon),
+                ';' => self.parse_char(TokenId::SemiColon),
+                ',' => self.parse_char(TokenId::Comma),
+                _ => self.parse_unknown(c),
+            };
+            return Some(Token {
+                id: token_id,
+                index,
+            });
         }
-
-        self.skip_whitespace();
-
-        let c = self.c;
-
-        let token = match c {
-            c if c.is_ascii_alphabetic() => self.parse_id(),
-            c if c.is_ascii_digit() => self.parse_int(),
-            b'(' => self.parse_char(TokenId::ParenOpen),
-            b')' => self.parse_char(TokenId::ParenClose),
-            b'[' => self.parse_char(TokenId::BracketOpen),
-            b']' => self.parse_char(TokenId::BracketClose),
-            b'{' => self.parse_char(TokenId::BraceOpen),
-            b'}' => self.parse_char(TokenId::BraceClose),
-            b':' => self.parse_char(TokenId::Colon),
-            b';' => self.parse_char(TokenId::SemiColon),
-            b',' => self.parse_char(TokenId::Comma),
-            _ => panic!("Illegal character {}", self.c),
-        };
-
-        Some(token)
+        None
     }
 }
 
@@ -153,7 +141,7 @@ mod tests {
     #[case(":", TokenId::Colon)]
     #[case(";", TokenId::SemiColon)]
     #[case(",", TokenId::Comma)]
-    fn test_lexer_single_token(#[case] src: String, #[case] expected: TokenId) {
+    fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,
             index: 0,
@@ -165,20 +153,20 @@ mod tests {
     #[test]
     fn test_lexer_token_identifier() {
         let expected = Token {
-            id: TokenId::Id(b"main".to_vec()),
+            id: TokenId::Id("main".to_owned()),
             index: 0,
         };
-        let result = Lexer::new("main\n".to_owned()).next();
+        let result = Lexer::new("main\n").next();
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_lexer_token_number() {
         let expected = Token {
-            id: TokenId::Number(b"123".to_vec()),
+            id: TokenId::Number("123".to_owned()),
             index: 0,
         };
-        let result = Lexer::new("123\n".to_owned()).next();
+        let result = Lexer::new("123\n").next();
         assert_eq!(result, Some(expected));
     }
 }

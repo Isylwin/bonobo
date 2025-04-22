@@ -9,7 +9,7 @@ mod lexer;
 pub fn bonobo_compile(file_name: &str) {
     let src = read_file(file_name);
 
-    for token in Lexer::new(src) {
+    for token in Lexer::new(&src) {
         println!("{}", token);
     }
 }
