@@ -13,6 +13,7 @@ pub enum TokenId {
     Colon,
     SemiColon,
     Comma,
+    Asterisk,
     Unknown(char),
 }
 
@@ -116,6 +117,7 @@ impl Iterator for Lexer<'_> {
                 ':' => self.parse_char(TokenId::Colon),
                 ';' => self.parse_char(TokenId::SemiColon),
                 ',' => self.parse_char(TokenId::Comma),
+                '*' => self.parse_char(TokenId::Asterisk),
                 _ => self.parse_unknown(c),
             };
             return Some(Token {
@@ -142,6 +144,7 @@ mod tests {
     #[case(":", TokenId::Colon)]
     #[case(";", TokenId::SemiColon)]
     #[case(",", TokenId::Comma)]
+    #[case("*", TokenId::Asterisk)]
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,
