@@ -1,0 +1,29 @@
+<program>         ::= <function_definition>
+
+<function_definition> ::= "fn" <identifier> "(" <parameter_list>? ")" ":" <type> "{" <statement_list> "}"
+
+<parameter_list>  ::= <parameter> ("," <parameter>)*
+
+<parameter>       ::= <identifier> ":" <type>
+
+<type>            ::= "int" | "char" <pointer_suffix>?
+
+<pointer_suffix>  ::= "*" <pointer_suffix>?     ; supports `char**` and beyond
+
+<statement_list>  ::= <statement>*
+
+<statement>       ::= <return_statement>
+
+<return_statement> ::= "return" <expression> ";"
+
+<expression>      ::= <number>
+
+<number>          ::= <digit>+
+
+<identifier>      ::= <letter> <identifier_rest>*
+
+<identifier_rest> ::= <letter> | <digit> | "_"
+
+<letter>          ::= "a" | "b" | ... | "z" | "A" | ... | "Z"
+
+<digit>           ::= "0" | "1" | ... | "9"
