@@ -1,7 +1,9 @@
 use std::{fmt::Display, str::CharIndices};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenId {
+    Fn,
+    Return,
     Id(String),
     Number(String),
     ParenOpen,
@@ -29,7 +31,7 @@ impl Display for TokenId {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub id: TokenId,
     pub index: usize,
@@ -68,7 +70,12 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        TokenId::Id(value)
+
+        match value.as_str() {
+            "fn" => TokenId::Fn,
+            "return" => TokenId::Return,
+            _ => TokenId::Id(value),
+        }
     }
 
     fn parse_int(&mut self) -> TokenId {
@@ -135,16 +142,18 @@ mod tests {
     use rstest::*;
 
     #[rstest]
-    #[case("(", TokenId::ParenOpen)]
-    #[case(")", TokenId::ParenClose)]
-    #[case("[", TokenId::BracketOpen)]
-    #[case("]", TokenId::BracketClose)]
-    #[case("{", TokenId::BraceOpen)]
-    #[case("}", TokenId::BraceClose)]
-    #[case(":", TokenId::Colon)]
-    #[case(";", TokenId::SemiColon)]
-    #[case(",", TokenId::Comma)]
-    #[case("*", TokenId::Asterisk)]
+    #[case::paren_open("(", TokenId::ParenOpen)]
+    #[case::paren_close(")", TokenId::ParenClose)]
+    #[case::bracket_open("[", TokenId::BracketOpen)]
+    #[case::bracket_close("]", TokenId::BracketClose)]
+    #[case::brace_open("{", TokenId::BraceOpen)]
+    #[case::brace_close("}", TokenId::BraceClose)]
+    #[case::colon(":", TokenId::Colon)]
+    #[case::semi_colon(";", TokenId::SemiColon)]
+    #[case::comma(",", TokenId::Comma)]
+    #[case::asterisk("*", TokenId::Asterisk)]
+    #[case::fn_("fn", TokenId::Fn)]
+    #[case::return_("return", TokenId::Return)]
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,
