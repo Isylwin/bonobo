@@ -1,9 +1,10 @@
 # Todo
 
-- Compiler command line arguments
 - Assert function in order to facilitate testing of assembled Bonobo code
 - Error handling for token streaming
 - Error handling for AST parsing
+- Error handling for Compiler
+- Refactor Lexer to work with stream rather than entire string
 - Extend grammer with following constructs:
     - if - else
     - while loop
@@ -13,6 +14,10 @@
     - compile time const strings
 - Type verification for AST -> TypedAST
 - Command line arguments for Bonobo programs
+- More intricate verbosity
+- More logging with increased verbosity
+- Allow stdin as input
+- Integrate nasm and ld calls into program
 
 # Dependencies
 
