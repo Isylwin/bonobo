@@ -42,8 +42,8 @@ impl FromStr for Type {
 
 #[derive(Debug)]
 pub struct UnaryExpression {
-    operation: UnaryOperation,
-    operand: Box<Node>,
+    pub operation: UnaryOperation,
+    pub operand: Box<Node>,
 }
 
 #[derive(Debug)]
@@ -68,10 +68,10 @@ pub struct Parameter {
 
 #[derive(Debug)]
 pub struct FunctionDefinition {
-    identifier: String,
-    return_type: Type,
-    parameters: Vec<Parameter>,
-    body: Vec<Node>,
+    pub identifier: String,
+    pub return_type: Type,
+    pub parameters: Vec<Parameter>,
+    pub body: Vec<Node>,
 }
 
 #[derive(Debug)]
@@ -81,7 +81,7 @@ pub enum ConstantValue {
 
 #[derive(Debug)]
 pub struct Constant {
-    value: ConstantValue,
+    pub value: ConstantValue,
 }
 
 #[derive(Debug)]

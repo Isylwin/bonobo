@@ -1,10 +1,12 @@
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::{BufWriter, prelude::*};
 use std::path::Path;
 
+use as_frontend::emit;
 use ast::Parser;
 use lexer::Lexer;
 
+mod as_frontend;
 mod ast;
 mod lexer;
 
@@ -18,6 +20,10 @@ pub fn bonobo_compile(file_name: &str) {
     let mut parser = Parser::new(lexer);
     let result = parser.parse();
     println!("{:?}", result);
+
+    let f = File::create("out/foo.s").expect("Unable to create file");
+    let mut f = BufWriter::new(f);
+    emit(result.unwrap(), &mut f).expect("Unable to write data");
 }
 
 fn read_file(file_name: &str) -> String {
