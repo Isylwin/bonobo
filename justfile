@@ -6,6 +6,7 @@ alias v := verify
 # Builds from: example/<file_name>.bnb
 # Outputs: out/<file_name>.asm, .o, and binary
 build file_name:
+  mkdir -p out
   cargo run -- examples/{{file_name}}.bnb -o out/{{file_name}}.asm
   nasm -felf64 out/{{file_name}}.asm -o out/{{file_name}}.o
   ld out/{{file_name}}.o -o out/{{file_name}}
@@ -13,6 +14,10 @@ build file_name:
 # Runs any file in the out directory
 run file_name:
   out/{{file_name}}
+
+# Cleans the output directory
+clean:
+  rm -rf out/
 
 # Builds the example/return_0.bnb program
 # Output executable will be out/return_0

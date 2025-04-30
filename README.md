@@ -21,6 +21,8 @@
 
 # Dependencies
 
+- [NASM assembler](https://linuxtldr.com/installing-nasm/)
+- [Rust](https://www.rust-lang.org/tools/install)
 - [just](https://github.com/casey/just) for running utility commands
 
 # Platform support
