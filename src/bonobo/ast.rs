@@ -125,6 +125,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         self.tokens.peek()
     }
 
+    fn peek_existing(&mut self) -> Result<&Token, ParseError> {
+        match self.peek() {
+            Some(token) => Ok(token),
+            _ => Err(ParseError::UnexpectedEof),
+        }
+    }
+
     fn expect<F>(&mut self, matcher: F) -> bool
     where
         F: Fn(&TokenId) -> bool,
@@ -280,10 +287,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(Node::FunctionDefinition(fn_def))
     }
 
-    fn parse_return(&mut self) -> Result<Node, ParseError> {
-        self.advance_required_symbol(TokenId::Return)?;
+    fn parse_unary_operation(&mut self, operation: UnaryOperation) -> Result<Node, ParseError> {
+        self.advance();
 
-        let operation = UnaryOperation::Return;
         let operand_node = self.parse_expression()?;
         let operand = Box::new(operand_node);
 
@@ -304,36 +310,36 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_expression(&mut self) -> Result<Node, ParseError> {
-        if let Some(token) = self.peek() {
-            let node = match token {
-                Token {
-                    id: TokenId::Number(_),
-                    ..
-                } => self.parse_constant(),
-                _ => return Err(ParseError::UnexpectedToken(token.clone())),
-            };
-            return node;
+        let token = self.peek_existing()?;
+
+        match token {
+            Token {
+                id: TokenId::Number(_),
+                ..
+            } => self.parse_constant(),
+            _ => Err(ParseError::UnexpectedToken(token.clone())),
         }
-        Err(ParseError::UnexpectedEof)
     }
 
     fn parse_statement(&mut self) -> Result<Node, ParseError> {
-        if let Some(token) = self.peek() {
-            let node = match token {
-                Token {
-                    id: TokenId::Return,
-                    ..
-                } => self.parse_return()?,
-                _ => return Err(ParseError::UnexpectedToken(token.clone())),
-            };
+        let token = self.peek_existing()?;
 
-            // Consume the expected ; after the expression
-            self.advance_required(is_token_symbol(TokenId::SemiColon))?;
+        let node = match token {
+            Token {
+                id: TokenId::Return,
+                ..
+            } => self.parse_unary_operation(UnaryOperation::Return),
+            Token {
+                id: TokenId::Assert,
+                ..
+            } => self.parse_unary_operation(UnaryOperation::Assert),
+            _ => Err(ParseError::UnexpectedToken(token.clone())),
+        };
 
-            return Ok(node);
-        }
+        // Consume the expected ; after the expression
+        self.advance_required(is_token_symbol(TokenId::SemiColon))?;
 
-        Err(ParseError::UnexpectedEof)
+        node
     }
 
     fn parse_next(&mut self) -> Result<Node, ParseError> {

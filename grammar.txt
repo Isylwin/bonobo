@@ -5,9 +5,11 @@
 <type>            ::= ("int" | "char") <pointer_suffix>?
 <pointer_suffix>  ::= "*" <pointer_suffix>? 
 <statement_list>  ::= <statement>*
-<statement>       ::= <return_statement>
-<return_statement> ::= "return" <w>+ <expression> <w>* ";" <w>*
-<expression>      ::= <number>
+<statement>       ::= (<return_statement> | <assert_statement>) <w>* ";" <w>*
+<return_statement> ::= "return" <w>+ <expression> 
+<assert_statement> ::= "assert" <w>+ <expression>
+<expression>      ::= <constant>
+<constant>        ::= <number>
 <number>          ::= <digit>+
 <identifier>      ::= <letter> <identifier_rest>*
 <identifier_rest> ::= <letter> | <digit> | "_"

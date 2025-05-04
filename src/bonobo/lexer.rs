@@ -4,6 +4,7 @@ use std::{fmt::Display, str::CharIndices};
 pub enum TokenId {
     Fn,
     Return,
+    Assert,
     Id(String),
     Number(String),
     ParenOpen,
@@ -74,6 +75,7 @@ impl<'a> Lexer<'a> {
         match value.as_str() {
             "fn" => TokenId::Fn,
             "return" => TokenId::Return,
+            "assert" => TokenId::Assert,
             _ => TokenId::Id(value),
         }
     }
@@ -154,6 +156,7 @@ mod tests {
     #[case::asterisk("*", TokenId::Asterisk)]
     #[case::fn_("fn", TokenId::Fn)]
     #[case::return_("return", TokenId::Return)]
+    #[case::return_("assert", TokenId::Assert)]
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,
@@ -166,7 +169,7 @@ mod tests {
     #[test]
     fn test_lexer_token_identifier() {
         let expected = Token {
-            id: TokenId::Id("main".to_owned()),
+            id: TokenId::Id("main".into()),
             index: 0,
         };
         let result = Lexer::new("main\n").next();
@@ -176,7 +179,7 @@ mod tests {
     #[test]
     fn test_lexer_token_number() {
         let expected = Token {
-            id: TokenId::Number("123".to_owned()),
+            id: TokenId::Number("123".into()),
             index: 0,
         };
         let result = Lexer::new("123\n").next();

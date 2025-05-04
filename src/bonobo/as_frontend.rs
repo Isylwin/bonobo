@@ -11,6 +11,7 @@ use super::ast::{
 
 #[derive(Debug)]
 struct AsmProgram {
+    externs: Vec<String>,
     globals: Vec<String>,
     text: AsmSection,
     data: AsmSection,
@@ -26,7 +27,9 @@ struct AsmSection {
 pub enum AsmInstruction {
     Label(String),
     Move(AsmOperand, AsmOperand),
+    Compare(AsmOperand, AsmOperand),
     Syscall,
+    FnCall(String),
 }
 
 #[derive(Debug)]
@@ -81,9 +84,21 @@ impl fmt::Display for AsmRegister {
     }
 }
 
+impl fmt::Display for AsmOperand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AsmOperand::Register(s) => write!(f, "{}", s),
+            AsmOperand::Immediate(s) => write!(f, "{}", s),
+            AsmOperand::Label(s) => write!(f, "{}", s),
+            AsmOperand::Memory(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 impl AsmProgram {
     fn new() -> Self {
         let globals = vec!["_start".into()];
+        let externs = vec![];
         let text = AsmSection {
             name: ".text".into(),
             instructions: vec![],
@@ -94,14 +109,19 @@ impl AsmProgram {
         };
 
         AsmProgram {
+            externs,
             globals,
             text,
             data,
         }
     }
 
-    fn append_text(&mut self, instruction: AsmInstruction) {
+    fn add_instruction(&mut self, instruction: AsmInstruction) {
         self.text.instructions.push(instruction)
+    }
+
+    fn add_extern(&mut self, external: &str) {
+        self.externs.push(external.into());
     }
 }
 
@@ -133,13 +153,13 @@ impl Emit for AsmInstruction {
         match self {
             AsmInstruction::Label(s) => writeln!(writer, "{}:", s)?,
             AsmInstruction::Move(src, dst) => {
-                write!(writer, "\t\tmov\t")?;
-                dst.emit(writer)?;
-                write!(writer, ", ")?;
-                src.emit(writer)?;
-                writeln!(writer)?;
+                writeln!(writer, "\t\tmov\t\t{}, {}", dst, src)?;
+            }
+            AsmInstruction::Compare(src, dst) => {
+                writeln!(writer, "\t\tcmp\t\t{}, {}", dst, src)?;
             }
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
+            AsmInstruction::FnCall(s) => writeln!(writer, "\t\tcall\t\t{}", s)?,
         }
         Ok(())
     }
@@ -177,6 +197,10 @@ impl Emit for AsmProgram {
             writeln!(writer, "\t\tglobal {}", var_name)?;
         }
         writeln!(writer)?;
+        for var_name in &self.externs {
+            writeln!(writer, "\t\textern {}", var_name)?;
+        }
+        writeln!(writer)?;
         self.text.emit(writer)?;
         writeln!(writer)?;
         self.data.emit(writer)?;
@@ -208,7 +232,7 @@ impl AsmParser {
             "main" => "_start",
             s => s,
         };
-        program.append_text(AsmInstruction::Label(label.into()));
+        program.add_instruction(AsmInstruction::Label(label.into()));
 
         //Disregard parameters for now
 
@@ -223,11 +247,18 @@ impl AsmParser {
 
     fn parse_return(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
         let mut prog = self.parse_node(program, inner)?;
-        prog.append_text(AsmInstruction::Move(
-            AsmOperand::Immediate(60),
+        prog.add_instruction(AsmInstruction::Move(
+            AsmOperand::Immediate(60), // platform specific
             AsmOperand::Register(AsmRegister::Rax),
-        )); // platform specific
-        prog.append_text(AsmInstruction::Syscall);
+        ));
+        prog.add_instruction(AsmInstruction::Syscall);
+        Ok(prog)
+    }
+
+    fn parse_assert(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
+        let mut prog = self.parse_node(program, inner)?;
+        prog.add_extern("assert");
+        prog.add_instruction(AsmInstruction::FnCall("assert".into()));
         Ok(prog)
     }
 
@@ -236,7 +267,7 @@ impl AsmParser {
         mut program: AsmProgram,
         value: i64,
     ) -> Result<AsmProgram, AsmParseError> {
-        program.append_text(AsmInstruction::Move(
+        program.add_instruction(AsmInstruction::Move(
             AsmOperand::Immediate(value),
             AsmOperand::Register(AsmRegister::Rdi),
         ));
@@ -250,6 +281,10 @@ impl AsmParser {
                 operation: UnaryOperation::Return,
                 operand: inner,
             }) => self.parse_return(program, inner.as_ref()),
+            Node::UnaryExpression(UnaryExpression {
+                operation: UnaryOperation::Assert,
+                operand: inner,
+            }) => self.parse_assert(program, inner.as_ref()),
             Node::Constant(Constant {
                 value: ConstantValue::Int64(val),
             }) => self.parse_const_int(program, *val),
