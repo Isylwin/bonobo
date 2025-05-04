@@ -7,7 +7,7 @@ use super::lexer::{Token, TokenId};
 #[derive(Debug)]
 pub enum UnaryOperation {
     Return,
-    Assignment,
+    Assert,
 }
 
 #[derive(Debug)]
@@ -29,13 +29,13 @@ pub enum Type {
 }
 
 impl FromStr for Type {
-    type Err = ();
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "int" => Ok(Type::Int64),
             "char" => Ok(Type::Char),
-            _ => Err(()),
+            _ => Err(ParseError::UnknownType(s.into())),
         }
     }
 }
@@ -103,6 +103,7 @@ pub enum ParseError {
     UnexpectedToken(Token),
     UnexpectedEof,
     UnknownConstant(String), // TODO should be a token
+    UnknownType(String),
 }
 
 fn is_token_symbol(a: TokenId) -> impl Fn(&TokenId) -> bool {
@@ -131,20 +132,29 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         matches!(self.tokens.peek(), Some(Token { id, .. }) if matcher(id))
     }
 
-    fn expect_and_advance<F>(&mut self, matcher: F) -> Token
+    /// Expect the next token to match the given matching function
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the token does not match the expected token,
+    /// or if an unexpected EOF was encountered.
+    fn advance_required<F>(&mut self, matcher: F) -> Result<Token, ParseError>
     where
         F: Fn(&TokenId) -> bool,
     {
         if self.expect(&matcher) {
-            self.advance().unwrap()
+            Ok(self.advance().unwrap())
         } else {
-            panic!("The token: {:?} was unexpected", self.tokens.peek());
+            match self.tokens.peek() {
+                Some(s) => Err(ParseError::UnexpectedToken(s.clone())),
+                None => Err(ParseError::UnexpectedEof),
+            }
         }
     }
 
     /// Will advance the token stream if the expected token is found
     /// Returns whether expected token is found
-    fn advance_if_expected<F>(&mut self, matcher: F) -> bool
+    fn advance_optional<F>(&mut self, matcher: F) -> bool
     where
         F: Fn(&TokenId) -> bool,
     {
@@ -155,15 +165,15 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         result
     }
 
-    fn advance_token_symbol(&mut self, id: TokenId) -> Token {
-        self.expect_and_advance(is_token_symbol(id))
+    fn advance_required_symbol(&mut self, id: TokenId) -> Result<Token, ParseError> {
+        self.advance_required(is_token_symbol(id))
     }
 
-    fn parse_identifier(&mut self) -> String {
-        match self.expect_and_advance(|id| matches!(id, TokenId::Id(_))) {
+    fn parse_identifier(&mut self) -> Result<String, ParseError> {
+        match self.advance_required(|id| matches!(id, TokenId::Id(_)))? {
             Token {
                 id: TokenId::Id(s), ..
-            } => s,
+            } => Ok(s),
             unexpected => panic!(
                 "Unreachable code detected - found {} after matching for ID token",
                 unexpected
@@ -171,12 +181,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    fn parse_number(&mut self) -> String {
-        match self.expect_and_advance(|id| matches!(id, TokenId::Number(_))) {
+    fn parse_number(&mut self) -> Result<String, ParseError> {
+        match self.advance_required(|id| matches!(id, TokenId::Number(_)))? {
             Token {
                 id: TokenId::Number(s),
                 ..
-            } => s,
+            } => Ok(s),
             unexpected => panic!(
                 "Unreachable code detected - found {} after matching for Number token",
                 unexpected
@@ -184,17 +194,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    fn parse_param(&mut self) -> Parameter {
-        let name = self.parse_identifier();
-        self.advance_token_symbol(TokenId::Colon);
-        let type_ = self.parse_type();
+    fn parse_param(&mut self) -> Result<Parameter, ParseError> {
+        let name = self.parse_identifier()?;
+        self.advance_required_symbol(TokenId::Colon)?;
+        let type_ = self.parse_type()?;
 
-        Parameter { name, type_ }
+        Ok(Parameter { name, type_ })
     }
 
-    fn parse_fn_params(&mut self) -> Vec<Parameter> {
+    fn parse_fn_params(&mut self) -> Result<Vec<Parameter>, ParseError> {
         // Advance the parenthesis open
-        self.advance_token_symbol(TokenId::ParenOpen);
+        self.advance_required_symbol(TokenId::ParenOpen)?;
         let mut params: Vec<Parameter> = vec![];
 
         // Loop until a closing parenthesis has been found e.g:
@@ -203,63 +213,63 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         // (a: int, b: char)
         // (a: int, b: char,)
         loop {
-            if self.advance_if_expected(is_token_symbol(TokenId::ParenClose)) {
+            if self.advance_optional(is_token_symbol(TokenId::ParenClose)) {
                 break;
             }
 
-            params.push(self.parse_param());
+            params.push(self.parse_param()?);
 
-            self.advance_if_expected(is_token_symbol(TokenId::Comma));
+            self.advance_optional(is_token_symbol(TokenId::Comma));
         }
 
-        params
+        Ok(params)
     }
 
-    fn parse_type(&mut self) -> Type {
+    fn parse_type(&mut self) -> Result<Type, ParseError> {
         // Do not support function types yet
 
         let ident = self.parse_identifier();
 
         // Expect identifier to be a specific type keyword
-        let type_ = ident.parse().expect("Unexpected type");
+        let mut type_ = ident?.parse()?;
 
         // Check for pointer symbol
         // DOES NOT RESOLVE MULTIPLE POINTERS
-        if self.advance_if_expected(is_token_symbol(TokenId::Asterisk)) {
-            return Type::Pointer {
+        if self.advance_optional(is_token_symbol(TokenId::Asterisk)) {
+            type_ = Type::Pointer {
                 inner_type: Box::new(type_),
             };
         }
-        type_
+        Ok(type_)
     }
 
-    fn parse_fn_body(&mut self) -> Vec<Node> {
-        self.advance_token_symbol(TokenId::BraceOpen);
+    fn parse_fn_body(&mut self) -> Result<Vec<Node>, ParseError> {
+        self.advance_required_symbol(TokenId::BraceOpen)?;
         let mut lines = vec![];
 
         loop {
-            if self.advance_if_expected(is_token_symbol(TokenId::BraceClose)) {
+            if self.advance_optional(is_token_symbol(TokenId::BraceClose)) {
                 break;
             }
 
-            let line = self.parse_statement();
-            lines.push(line.unwrap());
+            let line = self.parse_statement()?;
+            lines.push(line);
         }
 
-        lines
+        Ok(lines)
     }
 
-    fn parse_fn(&mut self) -> Node {
-        self.advance_token_symbol(TokenId::Fn);
+    fn parse_fn(&mut self) -> Result<Node, ParseError> {
+        self.advance_required_symbol(TokenId::Fn)?;
 
-        let identifier = self.parse_identifier();
+        let identifier = self.parse_identifier()?;
 
-        let parameters = self.parse_fn_params();
+        let parameters = self.parse_fn_params()?;
 
-        self.advance_token_symbol(TokenId::Colon);
-        let return_type = self.parse_type();
+        self.advance_required_symbol(TokenId::Colon)?;
+        let return_type = self.parse_type()?;
 
-        let body = self.parse_fn_body();
+        let body = self.parse_fn_body()?;
 
         let fn_def = FunctionDefinition {
             identifier,
@@ -267,25 +277,22 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             parameters,
             body,
         };
-        Node::FunctionDefinition(fn_def)
+        Ok(Node::FunctionDefinition(fn_def))
     }
 
-    fn parse_return(&mut self) -> Node {
-        self.advance_token_symbol(TokenId::Return);
+    fn parse_return(&mut self) -> Result<Node, ParseError> {
+        self.advance_required_symbol(TokenId::Return)?;
 
         let operation = UnaryOperation::Return;
-        let operand_node = self.parse_expression();
-        let operand = Box::new(operand_node.unwrap());
-
-        // Consume the expected ; after the expression
-        self.advance_if_expected(is_token_symbol(TokenId::SemiColon));
+        let operand_node = self.parse_expression()?;
+        let operand = Box::new(operand_node);
 
         let expr = UnaryExpression { operation, operand };
-        Node::UnaryExpression(expr)
+        Ok(Node::UnaryExpression(expr))
     }
 
     fn parse_constant(&mut self) -> Result<Node, ParseError> {
-        let pre_parsed = self.parse_number();
+        let pre_parsed = self.parse_number()?;
         let number = pre_parsed.parse::<i64>();
 
         match number {
@@ -316,9 +323,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 Token {
                     id: TokenId::Return,
                     ..
-                } => self.parse_return(),
+                } => self.parse_return()?,
                 _ => return Err(ParseError::UnexpectedToken(token.clone())),
             };
+
+            // Consume the expected ; after the expression
+            self.advance_required(is_token_symbol(TokenId::SemiColon))?;
 
             return Ok(node);
         }
@@ -331,7 +341,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             let node = match token {
                 Token {
                     id: TokenId::Fn, ..
-                } => self.parse_fn(),
+                } => self.parse_fn()?,
                 _ => return Err(ParseError::UnexpectedToken(token.clone())),
             };
 
