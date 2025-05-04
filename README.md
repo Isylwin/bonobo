@@ -1,6 +1,6 @@
 # Todo
 
-- Assert function in order to facilitate testing of assembled Bonobo code
+- Bonobo program which tests its own language
 - Error handling for token streaming
 - Error handling for AST parsing
 - Error handling for Compiler
