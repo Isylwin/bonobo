@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use std::io::{self, Write};
+use std::{
+    fmt,
+    io::{self, Write},
+};
 
 use super::ast::{
     Constant, ConstantValue, FunctionDefinition, Node, UnaryExpression, UnaryOperation,
@@ -19,11 +22,63 @@ struct AsmSection {
     instructions: Vec<AsmInstruction>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum AsmInstruction {
     Label(String),
-    Move(String, String),
+    Move(AsmOperand, AsmOperand),
     Syscall,
+}
+
+#[derive(Debug)]
+pub enum AsmOperand {
+    Register(AsmRegister),
+    Immediate(i64),
+    Label(String),
+    Memory(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AsmRegister {
+    Rax,
+    Rbx,
+    Rcx,
+    Rdx,
+    Rdi,
+    Rsi,
+    Rbp,
+    Rsp,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+}
+
+impl fmt::Display for AsmRegister {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            AsmRegister::Rax => "rax",
+            AsmRegister::Rbx => "rbx",
+            AsmRegister::Rcx => "rcx",
+            AsmRegister::Rdx => "rdx",
+            AsmRegister::Rsi => "rsi",
+            AsmRegister::Rdi => "rdi",
+            AsmRegister::Rbp => "rbp",
+            AsmRegister::Rsp => "rsp",
+            AsmRegister::R8 => "r8",
+            AsmRegister::R9 => "r9",
+            AsmRegister::R10 => "r10",
+            AsmRegister::R11 => "r11",
+            AsmRegister::R12 => "r12",
+            AsmRegister::R13 => "r13",
+            AsmRegister::R14 => "r14",
+            AsmRegister::R15 => "r15",
+        };
+        write!(f, "{}", name)
+    }
 }
 
 impl AsmProgram {
@@ -75,12 +130,28 @@ trait Emit {
 
 impl Emit for AsmInstruction {
     fn emit(&self, writer: &mut dyn Write) -> Result<(), EmitError> {
-        #[allow(unreachable_patterns)]
         match self {
             AsmInstruction::Label(s) => writeln!(writer, "{}:", s)?,
-            AsmInstruction::Move(src, dst) => writeln!(writer, "\t\tmov\t{}, {}", dst, src)?,
+            AsmInstruction::Move(src, dst) => {
+                write!(writer, "\t\tmov\t")?;
+                dst.emit(writer)?;
+                write!(writer, ", ")?;
+                src.emit(writer)?;
+                writeln!(writer)?;
+            }
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
-            _ => return Err(EmitError::UnknownInstruction(self.clone())),
+        }
+        Ok(())
+    }
+}
+
+impl Emit for AsmOperand {
+    fn emit(&self, writer: &mut dyn Write) -> Result<(), EmitError> {
+        match self {
+            AsmOperand::Register(s) => write!(writer, "{}", s)?,
+            AsmOperand::Immediate(s) => write!(writer, "{}", s)?,
+            AsmOperand::Label(s) => write!(writer, "{}", s)?,
+            AsmOperand::Memory(s) => write!(writer, "{}", s)?,
         }
         Ok(())
     }
@@ -152,7 +223,10 @@ impl AsmParser {
 
     fn parse_return(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
         let mut prog = self.parse_node(program, inner)?;
-        prog.append_text(AsmInstruction::Move("60".into(), "rax".into())); // platform specific
+        prog.append_text(AsmInstruction::Move(
+            AsmOperand::Immediate(60),
+            AsmOperand::Register(AsmRegister::Rax),
+        )); // platform specific
         prog.append_text(AsmInstruction::Syscall);
         Ok(prog)
     }
@@ -162,7 +236,10 @@ impl AsmParser {
         mut program: AsmProgram,
         value: i64,
     ) -> Result<AsmProgram, AsmParseError> {
-        program.append_text(AsmInstruction::Move(format!("{}", value), "rdi".into()));
+        program.append_text(AsmInstruction::Move(
+            AsmOperand::Immediate(value),
+            AsmOperand::Register(AsmRegister::Rdi),
+        ));
         Ok(program)
     }
 
