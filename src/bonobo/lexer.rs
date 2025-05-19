@@ -16,7 +16,9 @@ pub enum TokenId {
     Colon,
     SemiColon,
     Comma,
-    Asterisk,
+    Star,
+    Plus,
+    Minus,
     Unknown(char),
 }
 
@@ -126,7 +128,9 @@ impl Iterator for Lexer<'_> {
                 ':' => self.parse_char(TokenId::Colon),
                 ';' => self.parse_char(TokenId::SemiColon),
                 ',' => self.parse_char(TokenId::Comma),
-                '*' => self.parse_char(TokenId::Asterisk),
+                '*' => self.parse_char(TokenId::Star),
+                '+' => self.parse_char(TokenId::Plus),
+                '-' => self.parse_char(TokenId::Minus),
                 _ => self.parse_unknown(c),
             };
             return Some(Token {
@@ -153,10 +157,12 @@ mod tests {
     #[case::colon(":", TokenId::Colon)]
     #[case::semi_colon(";", TokenId::SemiColon)]
     #[case::comma(",", TokenId::Comma)]
-    #[case::asterisk("*", TokenId::Asterisk)]
+    #[case::star("*", TokenId::Star)]
+    #[case::plus("+", TokenId::Plus)]
+    #[case::plus("-", TokenId::Minus)]
     #[case::fn_("fn", TokenId::Fn)]
     #[case::return_("return", TokenId::Return)]
-    #[case::return_("assert", TokenId::Assert)]
+    #[case::assert_("assert", TokenId::Assert)]
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,

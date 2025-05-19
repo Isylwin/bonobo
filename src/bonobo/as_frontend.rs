@@ -6,7 +6,8 @@ use std::{
 };
 
 use super::ast::{
-    Constant, ConstantValue, FunctionDefinition, Node, UnaryExpression, UnaryOperation,
+    BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, Node,
+    UnaryExpression, UnaryOperation,
 };
 
 #[derive(Debug)]
@@ -26,19 +27,24 @@ struct AsmSection {
 #[derive(Debug)]
 pub enum AsmInstruction {
     Label(String),
-    Move(AsmOperand, AsmOperand),
-    Compare(AsmOperand, AsmOperand),
+    Move(AsmOperand, AsmOperand),     // src, dst
+    Compare(AsmOperand, AsmOperand),  // src, dst
+    Add(AsmOperand, AsmOperand),      // src, dst
+    Subtract(AsmOperand, AsmOperand), // src, dst
     Syscall,
     FnCall(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AsmOperand {
     Register(AsmRegister),
     Immediate(i64),
     Label(String),
     Memory(String),
 }
+
+const RDI: AsmOperand = AsmOperand::Register(AsmRegister::Rdi);
+const RCX: AsmOperand = AsmOperand::Register(AsmRegister::Rcx);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmRegister {
@@ -158,8 +164,14 @@ impl Emit for AsmInstruction {
             AsmInstruction::Compare(src, dst) => {
                 writeln!(writer, "\t\tcmp\t\t{}, {}", dst, src)?;
             }
+            AsmInstruction::Add(src, dst) => {
+                writeln!(writer, "\t\tadd\t\t{}, {}", dst, src)?;
+            }
+            AsmInstruction::Subtract(src, dst) => {
+                writeln!(writer, "\t\tsub\t\t{}, {}", dst, src)?;
+            }
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
-            AsmInstruction::FnCall(s) => writeln!(writer, "\t\tcall\t\t{}", s)?,
+            AsmInstruction::FnCall(s) => writeln!(writer, "\t\tcall\t{}", s)?,
         }
         Ok(())
     }
@@ -274,6 +286,29 @@ impl AsmParser {
         Ok(program)
     }
 
+    fn parse_binary_expression(
+        &self,
+        mut program: AsmProgram,
+        op: &BinaryOperation,
+        lhs: &Node,
+        rhs: &Node,
+    ) -> Result<AsmProgram, AsmParseError> {
+        //TODO reduce code dupe
+        program = self.parse_node(program, rhs)?;
+        program.add_instruction(AsmInstruction::Move(RDI, RCX));
+        program = self.parse_node(program, lhs)?;
+
+        match op {
+            BinaryOperation::Add => {
+                program.add_instruction(AsmInstruction::Add(RCX, RDI));
+            }
+            BinaryOperation::Subtract => {
+                program.add_instruction(AsmInstruction::Subtract(RCX, RDI));
+            }
+        }
+        Ok(program)
+    }
+
     fn parse_node(&self, program: AsmProgram, node: &Node) -> Result<AsmProgram, AsmParseError> {
         let result = match node {
             Node::FunctionDefinition(func) => self.parse_function(program, func),
@@ -288,6 +323,11 @@ impl AsmParser {
             Node::Constant(Constant {
                 value: ConstantValue::Int64(val),
             }) => self.parse_const_int(program, *val),
+            Node::BinaryExpression(BinaryExpression {
+                left: lhs,
+                right: rhs,
+                operation: op,
+            }) => self.parse_binary_expression(program, op, lhs.as_ref(), rhs.as_ref()),
             _ => Err(AsmParseError::UnknownAstNode),
         };
 

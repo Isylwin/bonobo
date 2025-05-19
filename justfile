@@ -12,7 +12,7 @@ build-std:
 build file_name: build-std
   mkdir -p out
   cargo run -- examples/{{file_name}}.bnb -o out/{{file_name}}.asm
-  nasm -felf64 out/{{file_name}}.asm -o out/{{file_name}}.o
+  nasm -felf64 -gdwarf -o out/{{file_name}}.o out/{{file_name}}.asm
   ld out/{{file_name}}.o out/std/__assert.o -o out/{{file_name}}
 
 # Runs any file in the out directory
@@ -40,6 +40,12 @@ return_42:
 assert:
   just build assert
   just run assert
+
+# Builds the example/expressions.bnb program
+# Output executable will be out/expressions
+expressions:
+  just build expressions
+  just run expressions
 
 verify:
   cargo fmt

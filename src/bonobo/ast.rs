@@ -11,8 +11,31 @@ pub enum UnaryOperation {
 }
 
 #[derive(Debug)]
+pub struct BinaryOperator {
+    left_binding_power: u8,
+    right_binding_power: u8,
+}
+
+#[derive(Debug)]
 pub enum BinaryOperation {
     Add,
+    Subtract,
+}
+
+impl BinaryOperation {
+    fn binding_power(&self) -> (u8, u8) {
+        match self {
+            BinaryOperation::Add | BinaryOperation::Subtract => (1, 2),
+        }
+    }
+
+    fn from_token_id(token_id: &TokenId) -> Result<Self, ParseError> {
+        match token_id {
+            TokenId::Plus => Ok(Self::Add),
+            TokenId::Minus => Ok(Self::Subtract),
+            _ => Err(ParseError::UnknownOperator(token_id.clone())),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -48,9 +71,9 @@ pub struct UnaryExpression {
 
 #[derive(Debug)]
 pub struct BinaryExpression {
-    operation: BinaryOperation,
-    left: Box<Node>,
-    right: Box<Node>,
+    pub operation: BinaryOperation,
+    pub left: Box<Node>,
+    pub right: Box<Node>,
 }
 
 #[derive(Debug)]
@@ -104,6 +127,7 @@ pub enum ParseError {
     UnexpectedEof,
     UnknownConstant(String), // TODO should be a token
     UnknownType(String),
+    UnknownOperator(TokenId),
 }
 
 fn is_token_symbol(a: TokenId) -> impl Fn(&TokenId) -> bool {
@@ -119,6 +143,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     fn advance(&mut self) -> Option<Token> {
         self.tokens.next()
+    }
+
+    fn advance_existing(&mut self) -> Result<Token, ParseError> {
+        match self.advance() {
+            Some(token) => Ok(token),
+            _ => Err(ParseError::UnexpectedEof),
+        }
     }
 
     fn peek(&mut self) -> Option<&Token> {
@@ -242,7 +273,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
         // Check for pointer symbol
         // DOES NOT RESOLVE MULTIPLE POINTERS
-        if self.advance_optional(is_token_symbol(TokenId::Asterisk)) {
+        if self.advance_optional(is_token_symbol(TokenId::Star)) {
             type_ = Type::Pointer {
                 inner_type: Box::new(type_),
             };
@@ -297,28 +328,64 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(Node::UnaryExpression(expr))
     }
 
-    fn parse_constant(&mut self) -> Result<Node, ParseError> {
-        let pre_parsed = self.parse_number()?;
-        let number = pre_parsed.parse::<i64>();
+    fn parse_constant(&mut self, token: Token) -> Result<Node, ParseError> {
+        let token_value = match token.id {
+            TokenId::Number(s) => s,
+            _ => panic!("Unreachable code"),
+        };
+        let number = token_value.parse::<i64>();
 
         match number {
             Ok(val) => Ok(Node::Constant(Constant {
                 value: ConstantValue::Int64(val),
             })),
-            Err(_) => Err(ParseError::UnknownConstant(pre_parsed)),
+            Err(_) => Err(ParseError::UnknownConstant(token_value)),
         }
     }
 
-    fn parse_expression(&mut self) -> Result<Node, ParseError> {
-        let token = self.peek_existing()?;
-
+    fn parse_primary(&mut self) -> Result<Node, ParseError> {
+        let token = self.advance_existing()?;
         match token {
             Token {
                 id: TokenId::Number(_),
                 ..
-            } => self.parse_constant(),
-            _ => Err(ParseError::UnexpectedToken(token.clone())),
+            } => self.parse_constant(token),
+            token => Err(ParseError::UnexpectedToken(token.clone())),
         }
+    }
+
+    fn parse_expression_bp(&mut self, min_bp: u8) -> Result<Node, ParseError> {
+        let mut lhs = self.parse_primary()?;
+
+        loop {
+            if self.expect(is_token_symbol(TokenId::SemiColon)) {
+                break;
+            }
+
+            let token = self.peek_existing()?;
+            let op = BinaryOperation::from_token_id(&token.id)?;
+
+            let (l_bp, r_bp) = op.binding_power();
+            if l_bp < min_bp {
+                break;
+            }
+
+            self.advance_existing()?;
+            let rhs = self.parse_expression_bp(r_bp)?;
+
+            lhs = Node::BinaryExpression(BinaryExpression {
+                operation: op,
+                left: Box::new(lhs),
+                right: Box::new(rhs),
+            })
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_expression(&mut self) -> Result<Node, ParseError> {
+        // Perform Pratt parsing https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+        self.parse_expression_bp(0)
     }
 
     fn parse_statement(&mut self) -> Result<Node, ParseError> {
