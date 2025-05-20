@@ -358,6 +358,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let mut lhs = self.parse_primary()?;
 
         loop {
+            // DO NOT CONSUME SEMICOLON
+            // The end-of-expression token is consumed elsewhere
+            // as all recursive calls need to end when a SemiColon is encountered
             if self.expect(is_token_symbol(TokenId::SemiColon)) {
                 break;
             }
@@ -366,6 +369,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             let op = BinaryOperation::from_token_id(&token.id)?;
 
             let (l_bp, r_bp) = op.binding_power();
+
+            // If l_bp < min_bp then we should exit and return the primary
+            // because the previous operator has precendence over the current
             if l_bp < min_bp {
                 break;
             }

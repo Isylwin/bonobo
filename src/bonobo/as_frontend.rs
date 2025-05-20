@@ -293,7 +293,10 @@ impl AsmParser {
         lhs: &Node,
         rhs: &Node,
     ) -> Result<AsmProgram, AsmParseError> {
-        //TODO reduce code dupe
+        // First generate the right hand side
+        // Some operations, such as substraction are not associative
+        // The RHS needs to be substracted from the LHS
+        // and the result should end up in the RDI register
         program = self.parse_node(program, rhs)?;
         program.add_instruction(AsmInstruction::Move(RDI, RCX));
         program = self.parse_node(program, lhs)?;
