@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::{
+    collections::HashSet,
     fmt,
     io::{self, Write},
 };
@@ -12,7 +13,7 @@ use super::ast::{
 
 #[derive(Debug)]
 struct AsmProgram {
-    externs: Vec<String>,
+    externs: HashSet<String>,
     globals: Vec<String>,
     text: AsmSection,
     data: AsmSection,
@@ -110,7 +111,7 @@ impl fmt::Display for AsmOperand {
 impl AsmProgram {
     fn new() -> Self {
         let globals = vec!["_start".into()];
-        let externs = vec![];
+        let externs = HashSet::new();
         let text = AsmSection {
             name: ".text".into(),
             instructions: vec![],
@@ -133,7 +134,7 @@ impl AsmProgram {
     }
 
     fn add_extern(&mut self, external: &str) {
-        self.externs.push(external.into());
+        self.externs.insert(external.into());
     }
 }
 
