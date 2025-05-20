@@ -22,13 +22,15 @@ pub enum BinaryOperation {
     Subtract,
     Multiply,
     Modulo,
+    Equals,
 }
 
 impl BinaryOperation {
     fn binding_power(&self) -> (u8, u8) {
         match self {
-            BinaryOperation::Add | BinaryOperation::Subtract => (1, 2),
-            BinaryOperation::Multiply | BinaryOperation::Modulo => (3, 4),
+            BinaryOperation::Equals => (1, 2),
+            BinaryOperation::Add | BinaryOperation::Subtract => (3, 4),
+            BinaryOperation::Multiply | BinaryOperation::Modulo => (5, 6),
         }
     }
 
@@ -38,6 +40,7 @@ impl BinaryOperation {
             TokenId::Minus => Ok(Self::Subtract),
             TokenId::Star => Ok(Self::Multiply),
             TokenId::Percent => Ok(Self::Modulo),
+            TokenId::EqualsEquals => Ok(Self::Equals),
             _ => Err(ParseError::UnknownOperator(token_id.clone())),
         }
     }

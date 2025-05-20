@@ -30,11 +30,15 @@ pub enum AsmInstruction {
     Label(String),
     Move(AsmOperand, AsmOperand),           // src, dst
     Swap(AsmOperand, AsmOperand),           // src, dst
+    MoveEqual(AsmOperand, AsmOperand),      // src, dst
+    MoveNotEqual(AsmOperand, AsmOperand),   // src, dst
+    SetEqual(AsmOperand),                   // dst
     Compare(AsmOperand, AsmOperand),        // src, dst
     Add(AsmOperand, AsmOperand),            // src, dst
     Subtract(AsmOperand, AsmOperand),       // src, dst
     SignedMultiply(AsmOperand, AsmOperand), // src, dst
     SignedDivide(AsmOperand),               // divisor
+    Xor(AsmOperand, AsmOperand),            // src, dst
     Cqo,
     Syscall,
     FnCall(String),
@@ -53,6 +57,17 @@ const RBX: AsmOperand = AsmOperand::Register(AsmRegister::Rbx); // preserved
 const RCX: AsmOperand = AsmOperand::Register(AsmRegister::Rcx); // Operand 1
 const RDX: AsmOperand = AsmOperand::Register(AsmRegister::Rdx); // Operand 2
 const RDI: AsmOperand = AsmOperand::Register(AsmRegister::Rdi); // Function arg #1
+const DIL: AsmOperand = AsmOperand::Register(AsmRegister::Dil); // RDI lower byte
+const AL: AsmOperand = AsmOperand::Register(AsmRegister::Al); // RAX lower byte
+
+const FALSE: AsmOperand = AsmOperand::Immediate(0);
+const TRUE: AsmOperand = AsmOperand::Immediate(1);
+
+macro_rules! xor {
+    ($reg:ident) => {
+        AsmInstruction::Xor($reg, $reg)
+    };
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmRegister {
@@ -72,6 +87,8 @@ pub enum AsmRegister {
     R13,
     R14,
     R15,
+    Dil,
+    Al,
 }
 
 impl fmt::Display for AsmRegister {
@@ -93,6 +110,8 @@ impl fmt::Display for AsmRegister {
             AsmRegister::R13 => "r13",
             AsmRegister::R14 => "r14",
             AsmRegister::R15 => "r15",
+            AsmRegister::Dil => "dil",
+            AsmRegister::Al => "al",
         };
         write!(f, "{}", name)
     }
@@ -172,6 +191,15 @@ impl Emit for AsmInstruction {
             AsmInstruction::Swap(src, dst) => {
                 writeln!(writer, "\t\txchg\t{}, {}", dst, src)?;
             }
+            AsmInstruction::MoveEqual(src, dst) => {
+                writeln!(writer, "\t\tcmove\t{}, {}", dst, src)?;
+            }
+            AsmInstruction::MoveNotEqual(src, dst) => {
+                writeln!(writer, "\t\tcmovne\t{}, {}", dst, src)?;
+            }
+            AsmInstruction::SetEqual(dst) => {
+                writeln!(writer, "\t\tsete\t{}", dst)?;
+            }
             AsmInstruction::Compare(src, dst) => {
                 writeln!(writer, "\t\tcmp\t\t{}, {}", dst, src)?;
             }
@@ -186,6 +214,9 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::SignedDivide(divisor) => {
                 writeln!(writer, "\t\tidiv\t{}", divisor)?;
+            }
+            AsmInstruction::Xor(src, dst) => {
+                writeln!(writer, "\t\txor\t\t{}, {}", dst, src)?;
             }
             AsmInstruction::Cqo => writeln!(writer, "\t\tcqo")?,
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
@@ -341,6 +372,12 @@ impl AsmParser {
                 program.add_instruction(AsmInstruction::Cqo);
                 program.add_instruction(AsmInstruction::SignedDivide(RDI));
                 program.add_instruction(AsmInstruction::Move(RDX, RDI));
+            }
+            BinaryOperation::Equals => {
+                program.add_instruction(xor!(RAX));
+                program.add_instruction(AsmInstruction::Compare(RCX, RDI));
+                program.add_instruction(AsmInstruction::SetEqual(AL));
+                program.add_instruction(AsmInstruction::Move(RAX, RDI));
             }
         }
         Ok(program)

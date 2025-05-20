@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::CharIndices};
+use std::{fmt::Display, iter::Peekable, str::CharIndices};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenId {
@@ -20,7 +20,8 @@ pub enum TokenId {
     Plus,
     Minus,
     Percent,
-    Unknown(char),
+    EqualsEquals,
+    Unknown(String),
 }
 
 impl Display for TokenId {
@@ -49,19 +50,23 @@ impl Display for Token {
 
 #[derive(Debug)]
 pub struct Lexer<'a> {
-    chars: CharIndices<'a>,
+    chars: Peekable<CharIndices<'a>>,
     curr: Option<(usize, char)>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Self {
-        let mut x = src.char_indices();
+        let mut x = src.char_indices().peekable();
         let c = x.next();
         Self { chars: x, curr: c }
     }
 
     fn advance(&mut self) {
         self.curr = self.chars.next();
+    }
+
+    fn peek(&mut self) -> Option<&(usize, char)> {
+        self.chars.peek()
     }
 
     fn parse_id(&mut self) -> TokenId {
@@ -101,9 +106,23 @@ impl<'a> Lexer<'a> {
         id
     }
 
+    fn parse_equals(&mut self) -> TokenId {
+        let id = match self.peek() {
+            Some((_, '=')) => {
+                self.advance();
+                TokenId::EqualsEquals
+            }
+            Some((_, c)) => TokenId::Unknown(format!("={}", c)),
+            _ => TokenId::Unknown("\0".into()),
+        };
+
+        self.advance();
+        id
+    }
+
     fn parse_unknown(&mut self, c: char) -> TokenId {
         self.advance();
-        TokenId::Unknown(c)
+        TokenId::Unknown(c.into())
     }
 }
 
@@ -133,6 +152,7 @@ impl Iterator for Lexer<'_> {
                 '+' => self.parse_char(TokenId::Plus),
                 '-' => self.parse_char(TokenId::Minus),
                 '%' => self.parse_char(TokenId::Percent),
+                '=' => self.parse_equals(),
                 _ => self.parse_unknown(c),
             };
             return Some(Token {
@@ -163,6 +183,8 @@ mod tests {
     #[case::plus("+", TokenId::Plus)]
     #[case::plus("-", TokenId::Minus)]
     #[case::slash("%", TokenId::Percent)]
+    #[case::equalsequals("==", TokenId::EqualsEquals)]
+    #[case::equalsgt("=>", TokenId::Unknown("=>".into()))]
     #[case::fn_("fn", TokenId::Fn)]
     #[case::return_("return", TokenId::Return)]
     #[case::assert_("assert", TokenId::Assert)]
