@@ -27,10 +27,13 @@ struct AsmSection {
 #[derive(Debug)]
 pub enum AsmInstruction {
     Label(String),
-    Move(AsmOperand, AsmOperand),     // src, dst
-    Compare(AsmOperand, AsmOperand),  // src, dst
-    Add(AsmOperand, AsmOperand),      // src, dst
-    Subtract(AsmOperand, AsmOperand), // src, dst
+    Move(AsmOperand, AsmOperand),           // src, dst
+    Compare(AsmOperand, AsmOperand),        // src, dst
+    Add(AsmOperand, AsmOperand),            // src, dst
+    Subtract(AsmOperand, AsmOperand),       // src, dst
+    SignedMultiply(AsmOperand, AsmOperand), // src, dst
+    SignedDivide(AsmOperand),               // divisor
+    Cqo,
     Syscall,
     FnCall(String),
 }
@@ -43,8 +46,11 @@ pub enum AsmOperand {
     Memory(String),
 }
 
-const RDI: AsmOperand = AsmOperand::Register(AsmRegister::Rdi);
+const RAX: AsmOperand = AsmOperand::Register(AsmRegister::Rax);
+const RBX: AsmOperand = AsmOperand::Register(AsmRegister::Rbx);
 const RCX: AsmOperand = AsmOperand::Register(AsmRegister::Rcx);
+const RDX: AsmOperand = AsmOperand::Register(AsmRegister::Rdx);
+const RDI: AsmOperand = AsmOperand::Register(AsmRegister::Rdi);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmRegister {
@@ -170,6 +176,13 @@ impl Emit for AsmInstruction {
             AsmInstruction::Subtract(src, dst) => {
                 writeln!(writer, "\t\tsub\t\t{}, {}", dst, src)?;
             }
+            AsmInstruction::SignedMultiply(src, dst) => {
+                writeln!(writer, "\t\timul\t{}, {}", dst, src)?;
+            }
+            AsmInstruction::SignedDivide(divisor) => {
+                writeln!(writer, "\t\tidiv\t{}", divisor)?;
+            }
+            AsmInstruction::Cqo => writeln!(writer, "\t\tcqo")?,
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
             AsmInstruction::FnCall(s) => writeln!(writer, "\t\tcall\t{}", s)?,
         }
@@ -307,6 +320,16 @@ impl AsmParser {
             }
             BinaryOperation::Subtract => {
                 program.add_instruction(AsmInstruction::Subtract(RCX, RDI));
+            }
+            BinaryOperation::Multiply => {
+                program.add_instruction(AsmInstruction::SignedMultiply(RCX, RDI));
+            }
+            BinaryOperation::Modulo => {
+                // https://en.wikibooks.org/wiki/X86_Assembly/Arithmetic
+                program.add_instruction(AsmInstruction::Move(RDI, RAX));
+                program.add_instruction(AsmInstruction::Cqo);
+                program.add_instruction(AsmInstruction::SignedDivide(RCX));
+                program.add_instruction(AsmInstruction::Move(RDX, RDI));
             }
         }
         Ok(program)

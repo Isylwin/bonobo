@@ -9,9 +9,11 @@
 <return_statement> ::= "return" <w>+ <expression> 
 <assert_statement> ::= "assert" <w>+ <expression>
 <expression_statement> ::= <expression>
-<expression>        ::= <constant> | <addition>
+<expression>        ::= <constant> | <addition> | <substraction> | <multiplication> | <modulo>
 <addition>          ::= <expression> <plus> <expression>
 <substraction>      ::= <expression> <minus> <expression>
+<multiplication>    ::= <expression> <star> <expression>
+<modulo>          ::= <expression> <percent> <expression>
 <constant>        ::= <number>
 <number>          ::= <digit>+
 <identifier>      ::= <letter> <identifier_rest>*
@@ -21,3 +23,5 @@
 <w>               ::= " " | "\t" | "\n"
 <plus>              ::= <w>* "+" <w>*
 <minus>             ::= <w>* "-" <w>*
+<star>              ::= <w>* "*" <w>*
+<percent>           ::= <w>* "%" <w>*

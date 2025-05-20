@@ -19,6 +19,7 @@ pub enum TokenId {
     Star,
     Plus,
     Minus,
+    Percent,
     Unknown(char),
 }
 
@@ -131,6 +132,7 @@ impl Iterator for Lexer<'_> {
                 '*' => self.parse_char(TokenId::Star),
                 '+' => self.parse_char(TokenId::Plus),
                 '-' => self.parse_char(TokenId::Minus),
+                '%' => self.parse_char(TokenId::Percent),
                 _ => self.parse_unknown(c),
             };
             return Some(Token {
@@ -160,6 +162,7 @@ mod tests {
     #[case::star("*", TokenId::Star)]
     #[case::plus("+", TokenId::Plus)]
     #[case::plus("-", TokenId::Minus)]
+    #[case::slash("%", TokenId::Percent)]
     #[case::fn_("fn", TokenId::Fn)]
     #[case::return_("return", TokenId::Return)]
     #[case::assert_("assert", TokenId::Assert)]

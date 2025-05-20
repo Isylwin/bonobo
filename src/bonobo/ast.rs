@@ -20,12 +20,15 @@ pub struct BinaryOperator {
 pub enum BinaryOperation {
     Add,
     Subtract,
+    Multiply,
+    Modulo,
 }
 
 impl BinaryOperation {
     fn binding_power(&self) -> (u8, u8) {
         match self {
             BinaryOperation::Add | BinaryOperation::Subtract => (1, 2),
+            BinaryOperation::Multiply | BinaryOperation::Modulo => (3, 4),
         }
     }
 
@@ -33,6 +36,8 @@ impl BinaryOperation {
         match token_id {
             TokenId::Plus => Ok(Self::Add),
             TokenId::Minus => Ok(Self::Subtract),
+            TokenId::Star => Ok(Self::Multiply),
+            TokenId::Percent => Ok(Self::Modulo),
             _ => Err(ParseError::UnknownOperator(token_id.clone())),
         }
     }
