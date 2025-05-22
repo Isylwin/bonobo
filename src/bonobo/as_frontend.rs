@@ -398,6 +398,14 @@ impl AsmParser {
                 program.add_instruction(AsmInstruction::SignedDivide(RCX));
                 program.add_instruction(AsmInstruction::Push(RDX));
             }
+            BinaryOperation::Division => {
+                // See Modulo
+                program.add_instruction(AsmInstruction::Pop(RCX));
+                program.add_instruction(AsmInstruction::Pop(RAX));
+                program.add_instruction(AsmInstruction::Cqo);
+                program.add_instruction(AsmInstruction::SignedDivide(RCX));
+                program.add_instruction(AsmInstruction::Push(RAX));
+            }
             BinaryOperation::Equals => {
                 program.add_instruction(AsmInstruction::Pop(RCX));
                 program.add_instruction(AsmInstruction::Pop(RDI));

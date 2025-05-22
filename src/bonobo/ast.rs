@@ -22,6 +22,7 @@ pub enum BinaryOperation {
     Subtract,
     Multiply,
     Modulo,
+    Division,
     Equals,
 }
 
@@ -30,7 +31,9 @@ impl BinaryOperation {
         match self {
             BinaryOperation::Equals => (1, 2),
             BinaryOperation::Add | BinaryOperation::Subtract => (3, 4),
-            BinaryOperation::Multiply | BinaryOperation::Modulo => (5, 6),
+            BinaryOperation::Multiply | BinaryOperation::Modulo | BinaryOperation::Division => {
+                (5, 6)
+            }
         }
     }
 
@@ -40,6 +43,7 @@ impl BinaryOperation {
             TokenId::Minus => Ok(Self::Subtract),
             TokenId::Star => Ok(Self::Multiply),
             TokenId::Percent => Ok(Self::Modulo),
+            TokenId::Slash => Ok(Self::Division),
             TokenId::EqualsEquals => Ok(Self::Equals),
             _ => Err(ParseError::UnknownOperator(token_id.clone())),
         }
