@@ -1,23 +1,31 @@
 # Todo
 
-- Bonobo program which tests its own language
-- Error handling for token streaming
-- Error handling for AST parsing
-- Error handling for Compiler
-- Refactor Lexer to work with stream rather than entire string
-- Extend grammer with following constructs:
-    - if - else
+- Lexer
+    - Error handling for token streaming
+    - Refactor Lexer to work with stream rather than entire string
+    - Add line number and char index to Token
+- AST parser
+    - Error handling for AST parsing -> better error collection
+    - Create "DSL" like language for parsing -> would be easier to split up
+    - Type verification for AST -> TypedAST
+    - Find a fix for Token matching verbosity
+- Assembly frontend
+    - Split up to module
+    - Write optimizer for assembly frontend
+- Grammar
     - while loop
     - function calls
-    - basic arithmetic (add, sub, mult, modulo)
     - variable assignment
     - compile time const strings
-- Type verification for AST -> TypedAST
-- Command line arguments for Bonobo programs
-- More intricate verbosity
-- More logging with increased verbosity
-- Allow stdin as input
-- Integrate nasm and ld calls into program
+- Standard library
+    - Write more std functions for Bonobo
+        - print to output and read from input
+- General
+    - Bonobo program which tests its own language
+    - More intricate verbosity
+    - More logging with increased verbosity
+    - Allow stdin as input
+    - Integrate nasm and ld calls into program
 
 # Dependencies
 
