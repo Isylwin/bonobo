@@ -3,6 +3,9 @@ use std::{fmt::Display, iter::Peekable, str::CharIndices};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenId {
     Fn,
+    If,
+    ElIf,
+    Else,
     Return,
     Assert,
     Id(String),
@@ -83,6 +86,9 @@ impl<'a> Lexer<'a> {
 
         match value.as_str() {
             "fn" => TokenId::Fn,
+            "if" => TokenId::If,
+            "elif" => TokenId::ElIf,
+            "else" => TokenId::Else,
             "return" => TokenId::Return,
             "assert" => TokenId::Assert,
             _ => TokenId::Id(value),
@@ -189,6 +195,9 @@ mod tests {
     #[case::equalsequals("==", TokenId::EqualsEquals)]
     #[case::equalsgt("=>", TokenId::Unknown("=>".into()))]
     #[case::fn_("fn", TokenId::Fn)]
+    #[case::if_("if", TokenId::If)]
+    #[case::elif_("elif", TokenId::ElIf)]
+    #[case::else_("else", TokenId::Else)]
     #[case::return_("return", TokenId::Return)]
     #[case::assert_("assert", TokenId::Assert)]
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {

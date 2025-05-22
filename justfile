@@ -47,10 +47,17 @@ expressions:
   just build expressions
   just run expressions
 
+# Builds the example/ifthen.bnb program
+# Output executable will be out/ifthen
+ifthen:
+  just build ifthen
+  just run ifthen
+
 run-all:
   just return_0
   just assert
   just expressions
+  just ifthen
 
 verify:
   cargo fmt

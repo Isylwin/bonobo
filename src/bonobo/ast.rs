@@ -11,12 +11,6 @@ pub enum UnaryOperation {
 }
 
 #[derive(Debug)]
-pub struct BinaryOperator {
-    left_binding_power: u8,
-    right_binding_power: u8,
-}
-
-#[derive(Debug)]
 pub enum BinaryOperation {
     Add,
     Subtract,
@@ -89,6 +83,13 @@ pub struct BinaryExpression {
 }
 
 #[derive(Debug)]
+pub struct IfStatement {
+    pub expression: Box<Node>,
+    pub true_branch: Vec<Node>,
+    pub false_branch: Vec<Node>,
+}
+
+#[derive(Debug)]
 pub struct Variable {
     identifier: String,
     type_: Type,
@@ -124,6 +125,7 @@ pub enum Node {
     FunctionDefinition(FunctionDefinition),
     BinaryExpression(BinaryExpression),
     UnaryExpression(UnaryExpression),
+    IfStatement(IfStatement),
     Variable(Variable),
     Constant(Constant),
 }
@@ -301,7 +303,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(type_)
     }
 
-    fn parse_fn_body(&mut self) -> Result<Vec<Node>, ParseError> {
+    fn parse_block(&mut self) -> Result<Vec<Node>, ParseError> {
         self.advance_required_symbol(TokenId::BraceOpen)?;
         let mut lines = vec![];
 
@@ -327,7 +329,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         self.advance_required_symbol(TokenId::Colon)?;
         let return_type = self.parse_type()?;
 
-        let body = self.parse_fn_body()?;
+        let body = self.parse_block()?;
 
         let fn_def = FunctionDefinition {
             identifier,
@@ -336,6 +338,34 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             body,
         };
         Ok(Node::FunctionDefinition(fn_def))
+    }
+
+    fn parse_if_statement(&mut self, symbol: TokenId) -> Result<Node, ParseError> {
+        self.advance_required_symbol(symbol)?;
+
+        let expression = self.parse_expression()?;
+        let true_branch = self.parse_block()?;
+
+        let next = self.peek_existing()?;
+        let false_branch = match next {
+            Token {
+                id: TokenId::ElIf, ..
+            } => Ok(vec![self.parse_if_statement(TokenId::ElIf)?]),
+            Token {
+                id: TokenId::Else, ..
+            } => {
+                self.advance_required_symbol(TokenId::Else)?;
+                self.parse_block()
+            }
+            _ => Ok(vec![]),
+        }?;
+
+        let if_statement = IfStatement {
+            expression: Box::new(expression),
+            true_branch,
+            false_branch,
+        };
+        Ok(Node::IfStatement(if_statement))
     }
 
     fn parse_unary_operation(&mut self, operation: UnaryOperation) -> Result<Node, ParseError> {
@@ -381,7 +411,12 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             // DO NOT CONSUME SEMICOLON
             // The end-of-expression token is consumed elsewhere
             // as all recursive calls need to end when a SemiColon is encountered
-            if self.expect(is_token_symbol(TokenId::SemiColon)) {
+            // ------------------
+            // Expressions are also valid within an if statement
+            // Then the expression ends when a brace is encountered
+            if self.expect(is_token_symbol(TokenId::SemiColon))
+                || self.expect(is_token_symbol(TokenId::BraceOpen))
+            {
                 break;
             }
 
@@ -417,20 +452,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_statement(&mut self) -> Result<Node, ParseError> {
         let token = self.peek_existing()?;
 
-        let node = match token {
-            Token {
-                id: TokenId::Return,
-                ..
-            } => self.parse_unary_operation(UnaryOperation::Return),
-            Token {
-                id: TokenId::Assert,
-                ..
-            } => self.parse_unary_operation(UnaryOperation::Assert),
-            _ => Err(ParseError::UnexpectedToken(token.clone())),
+        let (node, needs_semicolon) = match token.id {
+            TokenId::Return => (self.parse_unary_operation(UnaryOperation::Return), true),
+            TokenId::Assert => (self.parse_unary_operation(UnaryOperation::Assert), true),
+            TokenId::If => (self.parse_if_statement(TokenId::If), false),
+            _ => (Err(ParseError::UnexpectedToken(token.clone())), false),
         };
 
-        // Consume the expected ; after the expression
-        self.advance_required(is_token_symbol(TokenId::SemiColon))?;
+        if needs_semicolon {
+            // Consume SemiColon if statement needs to be closed with one
+            self.advance_required(is_token_symbol(TokenId::SemiColon))?;
+        }
 
         node
     }

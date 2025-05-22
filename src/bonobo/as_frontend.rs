@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     io::{self, Write},
 };
 
 use super::ast::{
-    BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, Node,
-    UnaryExpression, UnaryOperation,
+    BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, IfStatement,
+    Node, UnaryExpression, UnaryOperation,
 };
 
 #[derive(Debug)]
@@ -17,6 +17,12 @@ struct AsmProgram {
     globals: Vec<String>,
     text: AsmSection,
     data: AsmSection,
+    env: AsmEnvironment,
+}
+
+#[derive(Debug)]
+struct AsmEnvironment {
+    labels: HashMap<String, i64>,
 }
 
 #[derive(Debug)]
@@ -27,7 +33,7 @@ struct AsmSection {
 
 #[derive(Debug)]
 pub enum AsmInstruction {
-    Label(String),
+    Label(AsmOperand),                      // Should always be a label
     Move(AsmOperand, AsmOperand),           // src, dst
     Swap(AsmOperand, AsmOperand),           // src, dst
     MoveEqual(AsmOperand, AsmOperand),      // src, dst
@@ -36,6 +42,8 @@ pub enum AsmInstruction {
     Pop(AsmOperand),                        // dst
     SetEqual(AsmOperand),                   // dst
     Compare(AsmOperand, AsmOperand),        // src, dst
+    Jump(AsmOperand),                       // loc
+    JumpEqual(AsmOperand),                  // loc
     Add(AsmOperand, AsmOperand),            // src, dst
     Subtract(AsmOperand, AsmOperand),       // src, dst
     SignedMultiply(AsmOperand, AsmOperand), // src, dst
@@ -130,6 +138,28 @@ impl fmt::Display for AsmOperand {
     }
 }
 
+impl AsmEnvironment {
+    fn new() -> Self {
+        let labels = HashMap::new();
+
+        AsmEnvironment { labels }
+    }
+
+    fn next_label(&mut self, prefix: &str) -> AsmOperand {
+        let label = match self.labels.get_mut(prefix) {
+            Some(v) => {
+                *v += 1;
+                format!("{}{}", prefix, v)
+            }
+            None => {
+                self.labels.insert(prefix.into(), 0);
+                format!("{}0", prefix)
+            }
+        };
+        AsmOperand::Label(label)
+    }
+}
+
 impl AsmProgram {
     fn new() -> Self {
         let globals = vec!["_start".into()];
@@ -142,12 +172,14 @@ impl AsmProgram {
             name: ".data".into(),
             instructions: vec![],
         };
+        let env = AsmEnvironment::new();
 
         AsmProgram {
             externs,
             globals,
             text,
             data,
+            env,
         }
     }
 
@@ -157,6 +189,10 @@ impl AsmProgram {
 
     fn add_extern(&mut self, external: &str) {
         self.externs.insert(external.into());
+    }
+
+    fn gen_label(&mut self, prefix: &str) -> AsmOperand {
+        self.env.next_label(prefix)
     }
 }
 
@@ -210,6 +246,12 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Compare(src, dst) => {
                 writeln!(writer, "\t\tcmp\t\t{}, {}", dst, src)?;
+            }
+            AsmInstruction::Jump(loc) => {
+                writeln!(writer, "\t\tjmp\t\t{}", loc)?;
+            }
+            AsmInstruction::JumpEqual(loc) => {
+                writeln!(writer, "\t\tje\t\t{}", loc)?;
             }
             AsmInstruction::Add(src, dst) => {
                 writeln!(writer, "\t\tadd\t\t{}, {}", dst, src)?;
@@ -297,11 +339,12 @@ impl AsmParser {
         mut program: AsmProgram,
         func: &FunctionDefinition,
     ) -> Result<AsmProgram, AsmParseError> {
-        let label = match func.identifier.as_str() {
+        let label_str = match func.identifier.as_str() {
             "main" => "_start",
             s => s,
         };
-        program.add_instruction(AsmInstruction::Label(label.into()));
+        let label = AsmOperand::Label(label_str.into());
+        program.add_instruction(AsmInstruction::Label(label));
 
         //Disregard parameters for now
 
@@ -312,6 +355,32 @@ impl AsmParser {
         }
 
         result
+    }
+
+    fn parse_if_statement(
+        &self,
+        program: AsmProgram,
+        if_stmt: &IfStatement,
+    ) -> Result<AsmProgram, AsmParseError> {
+        let mut prog = self.parse_node(program, if_stmt.expression.as_ref())?;
+
+        let true_label = prog.gen_label("if_t_");
+        let end_label = prog.gen_label("if_e_");
+
+        prog.add_instruction(AsmInstruction::Pop(RAX));
+        prog.add_instruction(AsmInstruction::Compare(TRUE, RAX));
+        prog.add_instruction(AsmInstruction::JumpEqual(true_label.clone()));
+        for node in &if_stmt.false_branch {
+            prog = self.parse_node(prog, node)?;
+        }
+        prog.add_instruction(AsmInstruction::Jump(end_label.clone()));
+        prog.add_instruction(AsmInstruction::Label(true_label));
+        for node in &if_stmt.true_branch {
+            prog = self.parse_node(prog, node)?;
+        }
+        prog.add_instruction(AsmInstruction::Label(end_label));
+
+        Ok(prog)
     }
 
     fn parse_return(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
@@ -437,6 +506,7 @@ impl AsmParser {
                 right: rhs,
                 operation: op,
             }) => self.parse_binary_expression(program, op, lhs.as_ref(), rhs.as_ref()),
+            Node::IfStatement(if_stmt) => self.parse_if_statement(program, if_stmt),
             _ => Err(AsmParseError::UnknownAstNode),
         };
 
