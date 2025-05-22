@@ -47,6 +47,11 @@ expressions:
   just build expressions
   just run expressions
 
+run-all:
+  just return_0
+  just assert
+  just expressions
+
 verify:
   cargo fmt
   cargo test
