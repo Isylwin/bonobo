@@ -8,9 +8,10 @@
 <statement>             ::= <return_statement> | <assert_statement> | <expression_statement> | <if_statement>
 <if_statement>          ::= "if" <w>* <expression> <w>* <block> <w>* <else_statement>?
 <else_statement>        ::= ("else" <w>* <block> <w>*) | ("el" <if_statement>)
-<return_statement>      ::= "return" <w>+ <expression> <w>* ";"
-<assert_statement>      ::= "assert" <w>+ <expression> <w>* ";"
-<expression_statement>  ::= <expression> <w>* ";"
+<return_statement>      ::= "return" <w>+ <expression> <w>* <end_of_statement>
+<assert_statement>      ::= "assert" <w>+ <expression> <w>* <end_of_statement>
+<expression_statement>  ::= <expression> <w>* <end_of_statement>
+<end_of_statement>      ::= ";"
 <expression>            ::= <constant> | <addition> | <substraction> | <multiplication> | <modulo> | <division> | <equals>
 <addition>              ::= <expression> <plus> <expression>
 <substraction>          ::= <expression> <minus> <expression>
