@@ -4,11 +4,14 @@
     - Error handling for token streaming
     - Refactor Lexer to work with stream rather than entire string
     - Add line number and char index to Token
+    - Create EoF token
 - AST parser
+    - Change parsing structure to use a ParsingContext struct instead of &self
     - Error handling for AST parsing -> better error collection
+        - Catch all errors in parsing context
     - Create "DSL" like language for parsing -> would be easier to split up
     - Type verification for AST -> TypedAST
-    - Find a fix for Token matching verbosity
+    - Work with EoF token
 - Assembly frontend
     - Split up to module
     - Write optimizer for assembly frontend

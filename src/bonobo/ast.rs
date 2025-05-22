@@ -230,27 +230,18 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_identifier(&mut self) -> Result<String, ParseError> {
-        match self.advance_required(|id| matches!(id, TokenId::Id(_)))? {
-            Token {
-                id: TokenId::Id(s), ..
-            } => Ok(s),
-            unexpected => panic!(
-                "Unreachable code detected - found {} after matching for ID token",
-                unexpected
-            ),
+        let token = self.advance_existing()?;
+        match token.id {
+            TokenId::Id(s) => Ok(s),
+            _ => Err(ParseError::UnexpectedToken(token.clone())),
         }
     }
 
     fn parse_number(&mut self) -> Result<String, ParseError> {
-        match self.advance_required(|id| matches!(id, TokenId::Number(_)))? {
-            Token {
-                id: TokenId::Number(s),
-                ..
-            } => Ok(s),
-            unexpected => panic!(
-                "Unreachable code detected - found {} after matching for Number token",
-                unexpected
-            ),
+        let token = self.advance_existing()?;
+        match token.id {
+            TokenId::Number(s) => Ok(s),
+            _ => Err(ParseError::UnexpectedToken(token.clone())),
         }
     }
 
@@ -347,13 +338,9 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let true_branch = self.parse_block()?;
 
         let next = self.peek_existing()?;
-        let false_branch = match next {
-            Token {
-                id: TokenId::ElIf, ..
-            } => Ok(vec![self.parse_if_statement(TokenId::ElIf)?]),
-            Token {
-                id: TokenId::Else, ..
-            } => {
+        let false_branch = match next.id {
+            TokenId::ElIf => Ok(vec![self.parse_if_statement(TokenId::ElIf)?]),
+            TokenId::Else => {
                 self.advance_required_symbol(TokenId::Else)?;
                 self.parse_block()
             }
@@ -365,6 +352,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             true_branch,
             false_branch,
         };
+
         Ok(Node::IfStatement(if_statement))
     }
 
@@ -378,11 +366,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         Ok(Node::UnaryExpression(expr))
     }
 
-    fn parse_constant(&mut self, token: Token) -> Result<Node, ParseError> {
-        let token_value = match token.id {
-            TokenId::Number(s) => s,
-            _ => panic!("Unreachable code"),
-        };
+    fn parse_constant(&mut self) -> Result<Node, ParseError> {
+        let token_value = self.parse_number()?;
         let number = token_value.parse::<i64>();
 
         match number {
@@ -394,13 +379,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_primary(&mut self) -> Result<Node, ParseError> {
-        let token = self.advance_existing()?;
-        match token {
-            Token {
-                id: TokenId::Number(_),
-                ..
-            } => self.parse_constant(token),
-            token => Err(ParseError::UnexpectedToken(token.clone())),
+        let token = self.peek_existing()?;
+        match token.id {
+            TokenId::Number(_) => self.parse_constant(),
+            _ => Err(ParseError::UnexpectedToken(token.clone())),
         }
     }
 
@@ -469,10 +451,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     fn parse_next(&mut self) -> Result<Node, ParseError> {
         if let Some(token) = self.peek() {
-            let node = match token {
-                Token {
-                    id: TokenId::Fn, ..
-                } => self.parse_fn()?,
+            let node = match token.id {
+                TokenId::Fn => self.parse_fn()?,
                 _ => return Err(ParseError::UnexpectedToken(token.clone())),
             };
 
