@@ -32,6 +32,8 @@ pub enum AsmInstruction {
     Swap(AsmOperand, AsmOperand),           // src, dst
     MoveEqual(AsmOperand, AsmOperand),      // src, dst
     MoveNotEqual(AsmOperand, AsmOperand),   // src, dst
+    Push(AsmOperand),                       // src
+    Pop(AsmOperand),                        // dst
     SetEqual(AsmOperand),                   // dst
     Compare(AsmOperand, AsmOperand),        // src, dst
     Add(AsmOperand, AsmOperand),            // src, dst
@@ -197,6 +199,12 @@ impl Emit for AsmInstruction {
             AsmInstruction::MoveNotEqual(src, dst) => {
                 writeln!(writer, "\t\tcmovne\t{}, {}", dst, src)?;
             }
+            AsmInstruction::Push(src) => {
+                writeln!(writer, "\t\tpush\t{}", src)?;
+            }
+            AsmInstruction::Pop(dst) => {
+                writeln!(writer, "\t\tpop\t\t{}", dst)?;
+            }
             AsmInstruction::SetEqual(dst) => {
                 writeln!(writer, "\t\tsete\t{}", dst)?;
             }
@@ -308,6 +316,8 @@ impl AsmParser {
 
     fn parse_return(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
         let mut prog = self.parse_node(program, inner)?;
+
+        prog.add_instruction(AsmInstruction::Pop(RDI));
         prog.add_instruction(AsmInstruction::Move(
             AsmOperand::Immediate(60), // platform specific
             RAX,
@@ -318,7 +328,9 @@ impl AsmParser {
 
     fn parse_assert(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
         let mut prog = self.parse_node(program, inner)?;
+
         prog.add_extern("assert");
+        prog.add_instruction(AsmInstruction::Pop(RDI));
         prog.add_instruction(AsmInstruction::FnCall("assert".into()));
         Ok(prog)
     }
@@ -328,7 +340,8 @@ impl AsmParser {
         mut program: AsmProgram,
         value: i64,
     ) -> Result<AsmProgram, AsmParseError> {
-        program.add_instruction(AsmInstruction::Move(AsmOperand::Immediate(value), RDI));
+        program.add_instruction(AsmInstruction::Move(AsmOperand::Immediate(value), RAX));
+        program.add_instruction(AsmInstruction::Push(RAX));
         Ok(program)
     }
 
@@ -339,7 +352,7 @@ impl AsmParser {
         lhs: &Node,
         rhs: &Node,
     ) -> Result<AsmProgram, AsmParseError> {
-        // Output of binary expression should be stored in RDI
+        // Output of binary expression will be stored on stack
 
         // First generate the right hand side
         // Some operations, such as substraction are not associative
@@ -347,37 +360,51 @@ impl AsmParser {
         // and the result should end up in the RDI register
 
         program = self.parse_node(program, lhs)?;
-        program.add_instruction(AsmInstruction::Move(RDI, RCX));
         program = self.parse_node(program, rhs)?;
 
-        // LHS = RCX
-        // RHS = RDI
+        // LHS = 2nd on stack
+        // RHS = 1st on stack
 
         match op {
             BinaryOperation::Add => {
                 // Addition is associative
+                program.add_instruction(AsmInstruction::Pop(RCX));
+                program.add_instruction(AsmInstruction::Pop(RDI));
                 program.add_instruction(AsmInstruction::Add(RCX, RDI));
+                program.add_instruction(AsmInstruction::Push(RDI));
             }
             BinaryOperation::Subtract => {
-                program.add_instruction(AsmInstruction::Swap(RDI, RCX));
+                program.add_instruction(AsmInstruction::Pop(RCX));
+                program.add_instruction(AsmInstruction::Pop(RDI));
                 program.add_instruction(AsmInstruction::Subtract(RCX, RDI));
+                program.add_instruction(AsmInstruction::Push(RDI));
             }
             BinaryOperation::Multiply => {
                 // Multiplication is associative
+                program.add_instruction(AsmInstruction::Pop(RCX));
+                program.add_instruction(AsmInstruction::Pop(RDI));
                 program.add_instruction(AsmInstruction::SignedMultiply(RCX, RDI));
+                program.add_instruction(AsmInstruction::Push(RDI));
             }
             BinaryOperation::Modulo => {
                 // https://en.wikibooks.org/wiki/X86_Assembly/Arithmetic
-                program.add_instruction(AsmInstruction::Move(RCX, RAX));
+                // Dividend is stored in RAX + RDX (lower bits in RAX)
+                // CQO or CQD needs to be used to sign extend RAX
+                // Remainder stored in RDX
+                // Quotient stored in RAX
+                program.add_instruction(AsmInstruction::Pop(RCX));
+                program.add_instruction(AsmInstruction::Pop(RAX));
                 program.add_instruction(AsmInstruction::Cqo);
-                program.add_instruction(AsmInstruction::SignedDivide(RDI));
-                program.add_instruction(AsmInstruction::Move(RDX, RDI));
+                program.add_instruction(AsmInstruction::SignedDivide(RCX));
+                program.add_instruction(AsmInstruction::Push(RDX));
             }
             BinaryOperation::Equals => {
+                program.add_instruction(AsmInstruction::Pop(RCX));
+                program.add_instruction(AsmInstruction::Pop(RDI));
                 program.add_instruction(xor!(RAX));
                 program.add_instruction(AsmInstruction::Compare(RCX, RDI));
                 program.add_instruction(AsmInstruction::SetEqual(AL));
-                program.add_instruction(AsmInstruction::Move(RAX, RDI));
+                program.add_instruction(AsmInstruction::Push(RAX));
             }
         }
         Ok(program)
