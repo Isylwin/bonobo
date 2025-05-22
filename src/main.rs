@@ -42,6 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut compiler = Compiler::new(is_verbose, input_stream, output_stream);
 
-    compiler.compile();
+    compiler.compile()?;
     Ok(())
 }

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{iter::Peekable, str::FromStr};
+use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::lexer::{Token, TokenId};
 
@@ -141,6 +141,14 @@ pub enum ParseError {
     UnknownType(String),
     UnknownOperator(TokenId),
 }
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for ParseError {}
 
 fn is_token_symbol(a: TokenId) -> impl Fn(&TokenId) -> bool {
     move |b| *b == a
