@@ -1,0 +1,4 @@
+fn main (argc: int, argv: char*) : int {
+    assert tokkie;
+    return 0;
+}

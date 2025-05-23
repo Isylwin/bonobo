@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter::Peekable, str::CharIndices};
+use std::{fmt, iter::Peekable, str::CharIndices};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenId {
@@ -28,8 +28,8 @@ pub enum TokenId {
     Unknown(String),
 }
 
-impl Display for TokenId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TokenId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TokenId::Id(c) => write!(f, "ID({})", c),
             TokenId::Number(c) => {
@@ -40,44 +40,76 @@ impl Display for TokenId {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Token {
-    pub id: TokenId,
-    pub index: usize,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
+    pub line: usize,
+    pub column: usize,
 }
 
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Token {{ id: {}, index: {} }}", self.id, self.index)
+impl Span {
+    fn new(line: usize, column: usize) -> Span {
+        Span { line, column }
+    }
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Line {}, Column {}", self.line, self.column,)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub id: TokenId,
+    pub span: Span,
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Token {{ id: {}, span: {} }}", self.id, self.span)
     }
 }
 
 #[derive(Debug)]
 pub struct Lexer<'a> {
     chars: Peekable<CharIndices<'a>>,
-    curr: Option<(usize, char)>,
+    c_line: usize,
+    c_column: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Self {
-        let mut x = src.char_indices().peekable();
-        let c = x.next();
-        Self { chars: x, curr: c }
+        let x = src.char_indices().peekable();
+        let c_line = 1;
+        let c_column = 0;
+        Self {
+            chars: x,
+            c_column,
+            c_line,
+        }
     }
 
-    fn advance(&mut self) {
-        self.curr = self.chars.next();
+    fn advance(&mut self) -> Option<(Span, char)> {
+        let next = self.chars.next();
+
+        (self.c_line, self.c_column) = match next {
+            Some((_, '\n')) => (self.c_line + 1, 0),
+            _ => (self.c_line, self.c_column + 1),
+        };
+
+        next.map(|(_, c)| (Span::new(self.c_line, self.c_column), c))
     }
 
     fn peek(&mut self) -> Option<&(usize, char)> {
         self.chars.peek()
     }
 
-    fn parse_id(&mut self) -> TokenId {
-        let mut value = String::new();
-        while let Some((_, ch)) = self.curr {
-            if ch.is_alphanumeric() || ch == '_' {
-                value.push(ch);
+    fn parse_id(&mut self, curr: char) -> TokenId {
+        let mut value = String::from(curr);
+
+        while let Some((_, ch)) = self.peek() {
+            if ch.is_alphanumeric() || *ch == '_' {
+                value.push(*ch);
                 self.advance();
             } else {
                 break;
@@ -95,11 +127,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn parse_int(&mut self) -> TokenId {
-        let mut value = String::new();
-        while let Some((_, ch)) = self.curr {
+    fn parse_int(&mut self, curr: char) -> TokenId {
+        let mut value = String::from(curr);
+        while let Some((_, ch)) = self.peek() {
             if ch.is_numeric() {
-                value.push(ch);
+                value.push(*ch);
                 self.advance();
             } else {
                 break;
@@ -109,7 +141,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_char(&mut self, id: TokenId) -> TokenId {
-        self.advance();
+        //self.advance();
         id
     }
 
@@ -123,12 +155,12 @@ impl<'a> Lexer<'a> {
             _ => TokenId::Unknown("\0".into()),
         };
 
-        self.advance();
+        //self.advance();
         id
     }
 
     fn parse_unknown(&mut self, c: char) -> TokenId {
-        self.advance();
+        //self.advance();
         TokenId::Unknown(c.into())
     }
 }
@@ -137,15 +169,15 @@ impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((index, c)) = self.curr {
+        while let Some((span, c)) = self.advance() {
             if c.is_whitespace() {
-                self.advance();
+                //self.advance();
                 continue;
             }
 
             let token_id = match c {
-                c if c.is_ascii_alphabetic() => self.parse_id(),
-                c if c.is_ascii_digit() => self.parse_int(),
+                c if c.is_ascii_alphabetic() || c == '_' => self.parse_id(c),
+                c if c.is_ascii_digit() => self.parse_int(c),
                 '(' => self.parse_char(TokenId::ParenOpen),
                 ')' => self.parse_char(TokenId::ParenClose),
                 '[' => self.parse_char(TokenId::BracketOpen),
@@ -163,10 +195,7 @@ impl Iterator for Lexer<'_> {
                 '=' => self.parse_equals(),
                 _ => self.parse_unknown(c),
             };
-            return Some(Token {
-                id: token_id,
-                index,
-            });
+            return Some(Token { id: token_id, span });
         }
         None
     }
@@ -176,6 +205,21 @@ impl Iterator for Lexer<'_> {
 mod tests {
     use super::*;
     use rstest::*;
+
+    fn cr_def_span() -> Span {
+        Span::new(1, 1)
+    }
+
+    fn cr_id_token(val: &str, line: usize, column: usize) -> Token {
+        cr_token(TokenId::Id(val.into()), line, column)
+    }
+
+    fn cr_token(id: TokenId, line: usize, column: usize) -> Token {
+        Token {
+            id,
+            span: Span { line, column },
+        }
+    }
 
     #[rstest]
     #[case::paren_open("(", TokenId::ParenOpen)]
@@ -203,7 +247,7 @@ mod tests {
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,
-            index: 0,
+            span: cr_def_span(),
         };
         let result = Lexer::new(src).next();
         assert_eq!(result, Some(a));
@@ -213,7 +257,7 @@ mod tests {
     fn test_lexer_token_identifier() {
         let expected = Token {
             id: TokenId::Id("main".into()),
-            index: 0,
+            span: cr_def_span(),
         };
         let result = Lexer::new("main\n").next();
         assert_eq!(result, Some(expected));
@@ -223,9 +267,21 @@ mod tests {
     fn test_lexer_token_number() {
         let expected = Token {
             id: TokenId::Number("123".into()),
-            index: 0,
+            span: cr_def_span(),
         };
         let result = Lexer::new("123\n").next();
         assert_eq!(result, Some(expected));
+    }
+
+    #[test]
+    fn test_sample_string() {
+        let expected = vec![
+            cr_token(TokenId::ParenOpen, 1, 1),
+            cr_id_token("_hi", 1, 2),
+            cr_token(TokenId::ParenClose, 1, 5),
+            cr_id_token("bye", 2, 1),
+        ];
+        let result: Vec<Token> = Lexer::new("(_hi)\nbye").collect();
+        assert_eq!(result, expected);
     }
 }

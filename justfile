@@ -35,6 +35,12 @@ return_42:
   just build return_42
   just run return_42
 
+# Builds the example/invalid.bnb program
+# Output executable will be out/invalid
+invalid:
+  just build invalid
+  just run invalid
+
 # Builds the example/assert.bnb program
 # Output executable will be out/assert
 assert:
