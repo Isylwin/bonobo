@@ -100,16 +100,16 @@ impl<'a> Lexer<'a> {
         next.map(|(_, c)| (Span::new(self.c_line, self.c_column), c))
     }
 
-    fn peek(&mut self) -> Option<&(usize, char)> {
-        self.chars.peek()
+    fn peek(&mut self) -> Option<char> {
+        self.chars.peek().map(|(_, c)| *c)
     }
 
     fn parse_id(&mut self, curr: char) -> TokenId {
         let mut value = String::from(curr);
 
-        while let Some((_, ch)) = self.peek() {
-            if ch.is_alphanumeric() || *ch == '_' {
-                value.push(*ch);
+        while let Some(ch) = self.peek() {
+            if ch.is_alphanumeric() || ch == '_' {
+                value.push(ch);
                 self.advance();
             } else {
                 break;
@@ -129,9 +129,9 @@ impl<'a> Lexer<'a> {
 
     fn parse_int(&mut self, curr: char) -> TokenId {
         let mut value = String::from(curr);
-        while let Some((_, ch)) = self.peek() {
+        while let Some(ch) = self.peek() {
             if ch.is_numeric() {
-                value.push(*ch);
+                value.push(ch);
                 self.advance();
             } else {
                 break;
@@ -141,26 +141,21 @@ impl<'a> Lexer<'a> {
     }
 
     fn parse_char(&mut self, id: TokenId) -> TokenId {
-        //self.advance();
         id
     }
 
     fn parse_equals(&mut self) -> TokenId {
-        let id = match self.peek() {
-            Some((_, '=')) => {
+        match self.peek() {
+            Some('=') => {
                 self.advance();
                 TokenId::EqualsEquals
             }
-            Some((_, c)) => TokenId::Unknown(format!("={}", c)),
+            Some(c) => TokenId::Unknown(format!("={}", c)),
             _ => TokenId::Unknown("\0".into()),
-        };
-
-        //self.advance();
-        id
+        }
     }
 
     fn parse_unknown(&mut self, c: char) -> TokenId {
-        //self.advance();
         TokenId::Unknown(c.into())
     }
 }
@@ -171,7 +166,6 @@ impl Iterator for Lexer<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((span, c)) = self.advance() {
             if c.is_whitespace() {
-                //self.advance();
                 continue;
             }
 

@@ -3,7 +3,6 @@
 - Lexer
     - Error handling for token streaming
     - Refactor Lexer to work with stream rather than entire string
-    - Add line number and char index to Token
     - Create EoF token
 - AST parser
     - Change parsing structure to use a ParsingContext struct instead of &self
