@@ -2,7 +2,7 @@
 
 use std::{fmt, iter::Peekable, str::FromStr};
 
-use super::lexer::{EOF_TOKEN, Token, TokenId};
+use super::lexer::{EOF_TOKEN, Lexer, Token, TokenId};
 
 #[derive(Debug)]
 pub enum UnaryOperation {
@@ -131,7 +131,7 @@ pub enum Node {
 }
 
 #[derive(Debug)]
-pub struct Parser<I: Iterator<Item = Token>> {
+pub struct ParseContext<I: Iterator<Item = Token>> {
     tokens: Peekable<I>,
 }
 
@@ -156,9 +156,270 @@ fn is_token_symbol(a: TokenId) -> impl Fn(&TokenId) -> bool {
     move |b| *b == a
 }
 
-impl<I: Iterator<Item = Token>> Parser<I> {
+fn parse_identifier<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<String, ParseError> {
+    let token = ctx.advance();
+    match token.id {
+        TokenId::Id(s) => Ok(s),
+        _ => Err(ParseError::UnexpectedToken(token.clone())),
+    }
+}
+
+fn parse_number<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<String, ParseError> {
+    let token = ctx.advance();
+    match token.id {
+        TokenId::Number(s) => Ok(s),
+        _ => Err(ParseError::UnexpectedToken(token.clone())),
+    }
+}
+
+fn parse_param<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<Parameter, ParseError> {
+    let name = parse_identifier(ctx)?;
+    ctx.advance_required_symbol(TokenId::Colon)?;
+    let type_ = parse_type(ctx)?;
+
+    Ok(Parameter { name, type_ })
+}
+
+fn parse_fn_params<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<Vec<Parameter>, ParseError> {
+    // Advance the parenthesis open
+    ctx.advance_required_symbol(TokenId::ParenOpen)?;
+    let mut params: Vec<Parameter> = vec![];
+
+    // Loop until a closing parenthesis has been found e.g:
+    // ()
+    // (a: int)
+    // (a: int, b: char)
+    // (a: int, b: char,)
+    loop {
+        if ctx.advance_optional(is_token_symbol(TokenId::ParenClose)) {
+            break;
+        }
+
+        params.push(parse_param(ctx)?);
+
+        ctx.advance_optional(is_token_symbol(TokenId::Comma));
+    }
+
+    Ok(params)
+}
+
+fn parse_type<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Result<Type, ParseError> {
+    // Do not support function types yet
+
+    let ident = parse_identifier(ctx);
+
+    // Expect identifier to be a specific type keyword
+    let mut type_ = ident?.parse()?;
+
+    // Check for pointer symbol
+    // DOES NOT RESOLVE MULTIPLE POINTERS
+    if ctx.advance_optional(is_token_symbol(TokenId::Star)) {
+        type_ = Type::Pointer {
+            inner_type: Box::new(type_),
+        };
+    }
+    Ok(type_)
+}
+
+fn parse_block<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<Vec<Node>, ParseError> {
+    ctx.advance_required_symbol(TokenId::BraceOpen)?;
+    let mut lines = vec![];
+
+    loop {
+        if ctx.advance_optional(is_token_symbol(TokenId::BraceClose)) {
+            break;
+        }
+
+        let line = parse_statement(ctx)?;
+        lines.push(line);
+    }
+
+    Ok(lines)
+}
+
+fn parse_fn<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Result<Node, ParseError> {
+    ctx.advance_required_symbol(TokenId::Fn)?;
+
+    let identifier = parse_identifier(ctx)?;
+
+    let parameters = parse_fn_params(ctx)?;
+
+    ctx.advance_required_symbol(TokenId::Colon)?;
+    let return_type = parse_type(ctx)?;
+
+    let body = parse_block(ctx)?;
+
+    let fn_def = FunctionDefinition {
+        identifier,
+        return_type,
+        parameters,
+        body,
+    };
+    Ok(Node::FunctionDefinition(fn_def))
+}
+
+fn parse_if_statement<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+    symbol: TokenId,
+) -> Result<Node, ParseError> {
+    ctx.advance_required_symbol(symbol)?;
+
+    let expression = parse_expression(ctx)?;
+    let true_branch = parse_block(ctx)?;
+
+    let next = ctx.peek();
+    let false_branch = match next.id {
+        TokenId::ElIf => Ok(vec![parse_if_statement(ctx, TokenId::ElIf)?]),
+        TokenId::Else => {
+            ctx.advance_required_symbol(TokenId::Else)?;
+            parse_block(ctx)
+        }
+        _ => Ok(vec![]),
+    }?;
+
+    let if_statement = IfStatement {
+        expression: Box::new(expression),
+        true_branch,
+        false_branch,
+    };
+
+    Ok(Node::IfStatement(if_statement))
+}
+
+fn parse_unary_operation<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+    operation: UnaryOperation,
+) -> Result<Node, ParseError> {
+    ctx.advance();
+
+    let operand_node = parse_expression(ctx)?;
+    let operand = Box::new(operand_node);
+
+    let expr = UnaryExpression { operation, operand };
+    Ok(Node::UnaryExpression(expr))
+}
+
+fn parse_constant<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<Node, ParseError> {
+    let token_value = parse_number(ctx)?;
+    let number = token_value.parse::<i64>();
+
+    match number {
+        Ok(val) => Ok(Node::Constant(Constant {
+            value: ConstantValue::Int64(val),
+        })),
+        Err(_) => Err(ParseError::UnknownConstant(token_value)),
+    }
+}
+
+fn parse_primary<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Result<Node, ParseError> {
+    let token = ctx.peek();
+    match token.id {
+        TokenId::Number(_) => parse_constant(ctx),
+        _ => Err(ParseError::UnexpectedToken(token.clone())),
+    }
+}
+
+fn parse_expression_bp<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+    min_bp: u8,
+) -> Result<Node, ParseError> {
+    let mut lhs = parse_primary(ctx)?;
+
+    loop {
+        // DO NOT CONSUME SEMICOLON
+        // The end-of-expression token is consumed elsewhere
+        // as all recursive calls need to end when a SemiColon is encountered
+        // ------------------
+        // Expressions are also valid within an if statement
+        // Then the expression ends when a brace is encountered
+        if ctx.expect(is_token_symbol(TokenId::SemiColon))
+            || ctx.expect(is_token_symbol(TokenId::BraceOpen))
+        {
+            break;
+        }
+
+        let token = ctx.peek();
+        let op = BinaryOperation::from_token_id(&token.id)?;
+
+        let (l_bp, r_bp) = op.binding_power();
+
+        // If l_bp < min_bp then we should exit and return the primary
+        // because the previous operator has precendence over the current
+        if l_bp < min_bp {
+            break;
+        }
+
+        ctx.advance();
+        let rhs = parse_expression_bp(ctx, r_bp)?;
+
+        lhs = Node::BinaryExpression(BinaryExpression {
+            operation: op,
+            left: Box::new(lhs),
+            right: Box::new(rhs),
+        })
+    }
+
+    Ok(lhs)
+}
+
+fn parse_expression<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<Node, ParseError> {
+    // Perform Pratt parsing https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+    parse_expression_bp(ctx, 0)
+}
+
+fn parse_statement<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+) -> Result<Node, ParseError> {
+    let token = ctx.peek();
+
+    let (node, needs_semicolon) = match token.id {
+        TokenId::Return => (parse_unary_operation(ctx, UnaryOperation::Return), true),
+        TokenId::Assert => (parse_unary_operation(ctx, UnaryOperation::Assert), true),
+        TokenId::If => (parse_if_statement(ctx, TokenId::If), false),
+        _ => (Err(ParseError::UnexpectedToken(token.clone())), false),
+    };
+
+    if needs_semicolon {
+        // Consume SemiColon if statement needs to be closed with one
+        ctx.advance_required(is_token_symbol(TokenId::SemiColon))?;
+    }
+
+    node
+}
+
+fn parse_next<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Result<Node, ParseError> {
+    let token = ctx.peek();
+
+    let node = match token.id {
+        TokenId::Fn => parse_fn(ctx)?,
+        _ => return Err(ParseError::UnexpectedToken(token.clone())),
+    };
+
+    Ok(node)
+}
+
+pub fn parse(lexer: Lexer) -> Result<Node, ParseError> {
+    let mut ctx = ParseContext::new(lexer);
+    parse_next(&mut ctx)
+}
+
+impl<I: Iterator<Item = Token>> ParseContext<I> {
     pub fn new(tokens: I) -> Self {
-        Parser {
+        ParseContext {
             tokens: tokens.peekable(),
         }
     }
@@ -217,240 +478,5 @@ impl<I: Iterator<Item = Token>> Parser<I> {
 
     fn advance_required_symbol(&mut self, id: TokenId) -> Result<Token, ParseError> {
         self.advance_required(is_token_symbol(id))
-    }
-
-    fn parse_identifier(&mut self) -> Result<String, ParseError> {
-        let token = self.advance();
-        match token.id {
-            TokenId::Id(s) => Ok(s),
-            _ => Err(ParseError::UnexpectedToken(token.clone())),
-        }
-    }
-
-    fn parse_number(&mut self) -> Result<String, ParseError> {
-        let token = self.advance();
-        match token.id {
-            TokenId::Number(s) => Ok(s),
-            _ => Err(ParseError::UnexpectedToken(token.clone())),
-        }
-    }
-
-    fn parse_param(&mut self) -> Result<Parameter, ParseError> {
-        let name = self.parse_identifier()?;
-        self.advance_required_symbol(TokenId::Colon)?;
-        let type_ = self.parse_type()?;
-
-        Ok(Parameter { name, type_ })
-    }
-
-    fn parse_fn_params(&mut self) -> Result<Vec<Parameter>, ParseError> {
-        // Advance the parenthesis open
-        self.advance_required_symbol(TokenId::ParenOpen)?;
-        let mut params: Vec<Parameter> = vec![];
-
-        // Loop until a closing parenthesis has been found e.g:
-        // ()
-        // (a: int)
-        // (a: int, b: char)
-        // (a: int, b: char,)
-        loop {
-            if self.advance_optional(is_token_symbol(TokenId::ParenClose)) {
-                break;
-            }
-
-            params.push(self.parse_param()?);
-
-            self.advance_optional(is_token_symbol(TokenId::Comma));
-        }
-
-        Ok(params)
-    }
-
-    fn parse_type(&mut self) -> Result<Type, ParseError> {
-        // Do not support function types yet
-
-        let ident = self.parse_identifier();
-
-        // Expect identifier to be a specific type keyword
-        let mut type_ = ident?.parse()?;
-
-        // Check for pointer symbol
-        // DOES NOT RESOLVE MULTIPLE POINTERS
-        if self.advance_optional(is_token_symbol(TokenId::Star)) {
-            type_ = Type::Pointer {
-                inner_type: Box::new(type_),
-            };
-        }
-        Ok(type_)
-    }
-
-    fn parse_block(&mut self) -> Result<Vec<Node>, ParseError> {
-        self.advance_required_symbol(TokenId::BraceOpen)?;
-        let mut lines = vec![];
-
-        loop {
-            if self.advance_optional(is_token_symbol(TokenId::BraceClose)) {
-                break;
-            }
-
-            let line = self.parse_statement()?;
-            lines.push(line);
-        }
-
-        Ok(lines)
-    }
-
-    fn parse_fn(&mut self) -> Result<Node, ParseError> {
-        self.advance_required_symbol(TokenId::Fn)?;
-
-        let identifier = self.parse_identifier()?;
-
-        let parameters = self.parse_fn_params()?;
-
-        self.advance_required_symbol(TokenId::Colon)?;
-        let return_type = self.parse_type()?;
-
-        let body = self.parse_block()?;
-
-        let fn_def = FunctionDefinition {
-            identifier,
-            return_type,
-            parameters,
-            body,
-        };
-        Ok(Node::FunctionDefinition(fn_def))
-    }
-
-    fn parse_if_statement(&mut self, symbol: TokenId) -> Result<Node, ParseError> {
-        self.advance_required_symbol(symbol)?;
-
-        let expression = self.parse_expression()?;
-        let true_branch = self.parse_block()?;
-
-        let next = self.peek();
-        let false_branch = match next.id {
-            TokenId::ElIf => Ok(vec![self.parse_if_statement(TokenId::ElIf)?]),
-            TokenId::Else => {
-                self.advance_required_symbol(TokenId::Else)?;
-                self.parse_block()
-            }
-            _ => Ok(vec![]),
-        }?;
-
-        let if_statement = IfStatement {
-            expression: Box::new(expression),
-            true_branch,
-            false_branch,
-        };
-
-        Ok(Node::IfStatement(if_statement))
-    }
-
-    fn parse_unary_operation(&mut self, operation: UnaryOperation) -> Result<Node, ParseError> {
-        self.advance();
-
-        let operand_node = self.parse_expression()?;
-        let operand = Box::new(operand_node);
-
-        let expr = UnaryExpression { operation, operand };
-        Ok(Node::UnaryExpression(expr))
-    }
-
-    fn parse_constant(&mut self) -> Result<Node, ParseError> {
-        let token_value = self.parse_number()?;
-        let number = token_value.parse::<i64>();
-
-        match number {
-            Ok(val) => Ok(Node::Constant(Constant {
-                value: ConstantValue::Int64(val),
-            })),
-            Err(_) => Err(ParseError::UnknownConstant(token_value)),
-        }
-    }
-
-    fn parse_primary(&mut self) -> Result<Node, ParseError> {
-        let token = self.peek();
-        match token.id {
-            TokenId::Number(_) => self.parse_constant(),
-            _ => Err(ParseError::UnexpectedToken(token.clone())),
-        }
-    }
-
-    fn parse_expression_bp(&mut self, min_bp: u8) -> Result<Node, ParseError> {
-        let mut lhs = self.parse_primary()?;
-
-        loop {
-            // DO NOT CONSUME SEMICOLON
-            // The end-of-expression token is consumed elsewhere
-            // as all recursive calls need to end when a SemiColon is encountered
-            // ------------------
-            // Expressions are also valid within an if statement
-            // Then the expression ends when a brace is encountered
-            if self.expect(is_token_symbol(TokenId::SemiColon))
-                || self.expect(is_token_symbol(TokenId::BraceOpen))
-            {
-                break;
-            }
-
-            let token = self.peek();
-            let op = BinaryOperation::from_token_id(&token.id)?;
-
-            let (l_bp, r_bp) = op.binding_power();
-
-            // If l_bp < min_bp then we should exit and return the primary
-            // because the previous operator has precendence over the current
-            if l_bp < min_bp {
-                break;
-            }
-
-            self.advance();
-            let rhs = self.parse_expression_bp(r_bp)?;
-
-            lhs = Node::BinaryExpression(BinaryExpression {
-                operation: op,
-                left: Box::new(lhs),
-                right: Box::new(rhs),
-            })
-        }
-
-        Ok(lhs)
-    }
-
-    fn parse_expression(&mut self) -> Result<Node, ParseError> {
-        // Perform Pratt parsing https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
-        self.parse_expression_bp(0)
-    }
-
-    fn parse_statement(&mut self) -> Result<Node, ParseError> {
-        let token = self.peek();
-
-        let (node, needs_semicolon) = match token.id {
-            TokenId::Return => (self.parse_unary_operation(UnaryOperation::Return), true),
-            TokenId::Assert => (self.parse_unary_operation(UnaryOperation::Assert), true),
-            TokenId::If => (self.parse_if_statement(TokenId::If), false),
-            _ => (Err(ParseError::UnexpectedToken(token.clone())), false),
-        };
-
-        if needs_semicolon {
-            // Consume SemiColon if statement needs to be closed with one
-            self.advance_required(is_token_symbol(TokenId::SemiColon))?;
-        }
-
-        node
-    }
-
-    fn parse_next(&mut self) -> Result<Node, ParseError> {
-        let token = self.peek();
-
-        let node = match token.id {
-            TokenId::Fn => self.parse_fn()?,
-            _ => return Err(ParseError::UnexpectedToken(token.clone())),
-        };
-
-        Ok(node)
-    }
-
-    pub fn parse(&mut self) -> Result<Node, ParseError> {
-        self.parse_next()
     }
 }

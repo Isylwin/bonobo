@@ -4,7 +4,7 @@ use std::io::{BufReader, BufWriter, prelude::*};
 use anyhow::Result;
 
 use as_frontend::emit;
-use ast::Parser;
+use ast::parse;
 use lexer::Lexer;
 
 mod as_frontend;
@@ -41,8 +41,7 @@ impl Compiler {
             }
         }
 
-        let mut parser = Parser::new(lexer);
-        let result = parser.parse()?;
+        let result = parse(lexer)?;
 
         if self.is_verbose {
             println!("{:?}", result);
