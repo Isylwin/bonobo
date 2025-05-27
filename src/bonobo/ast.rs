@@ -91,15 +91,15 @@ pub struct IfStatement {
 
 #[derive(Debug, PartialEq)]
 pub struct Variable {
-    identifier: String,
-    type_: Type,
-    value: Box<Node>,
+    pub identifier: String,
+    pub type_: Type,
+    pub value: Box<Node>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Parameter {
-    name: String,
-    type_: Type,
+    pub name: String,
+    pub type_: Type,
 }
 
 #[derive(Debug, PartialEq)]
