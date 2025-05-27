@@ -4,11 +4,12 @@
     - Error handling for token streaming
     - Refactor Lexer to work with stream rather than entire string
 - AST parser
-    - Change parsing structure to use a ParsingContext struct instead of &self
-    - Error handling for AST parsing -> better error collection
-        - Catch all errors in parsing context
-    - Create "DSL" like language for parsing -> would be easier to split up
+    - More robust AST error handling
+        - Return a ParseResult rather than a Node
+        - Actually consider when to synchronize to what tokens
+    - Split up to module
     - Type verification for AST -> TypedAST
+    - Semantic verification -> e.g. function must provide return statement
 - Assembly frontend
     - Split up to module
     - Write optimizer for assembly frontend
@@ -20,6 +21,8 @@
 - Standard library
     - Write more std functions for Bonobo
         - print to output and read from input
+    - Call program from bonobo standard library
+    - argc and argv
 - General
     - Bonobo program which tests its own language
     - More intricate verbosity

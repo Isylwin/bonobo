@@ -76,6 +76,10 @@ impl Token {
     fn new(id: TokenId, span: Span) -> Self {
         Token { id, span }
     }
+
+    pub fn is_eof(&self) -> bool {
+        *self == EOF_TOKEN
+    }
 }
 
 pub const EOF_TOKEN: Token = Token {

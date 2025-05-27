@@ -41,7 +41,7 @@ impl Compiler {
             }
         }
 
-        let result = parse(lexer)?;
+        let result = parse(lexer);
 
         if self.is_verbose {
             println!("{:?}", result);
