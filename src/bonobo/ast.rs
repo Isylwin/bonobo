@@ -225,7 +225,7 @@ fn parse_fn_params<I: Iterator<Item = Token>>(
     // (a: int, b: char)
     // (a: int, b: char,)
     loop {
-        if ctx.advance_optional(is_token_symbol(TokenId::ParenClose)) {
+        if ctx.has_fatal() || ctx.advance_optional(is_token_symbol(TokenId::ParenClose)) {
             break;
         }
 
