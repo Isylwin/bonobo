@@ -48,8 +48,6 @@ impl Compiler {
             println!("{:?}", result);
         }
 
-        // let f = File::create("out/foo.s").expect("Unable to create file");
-        // let mut f = BufWriter::new(f);
         emit(result, &mut self.output_stream).expect("Unable to write data");
         Ok(())
     }

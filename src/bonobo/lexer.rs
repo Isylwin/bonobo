@@ -26,6 +26,7 @@ pub enum TokenId {
     Slash,
     EqualsEquals,
     Unknown(String),
+    Eof,
 }
 
 impl fmt::Display for TokenId {
@@ -47,8 +48,15 @@ pub struct Span {
 }
 
 impl Span {
-    fn new(line: usize, column: usize) -> Span {
+    fn new(line: usize, column: usize) -> Self {
         Span { line, column }
+    }
+
+    const fn dummy() -> Self {
+        Span {
+            line: usize::MAX,
+            column: usize::MAX,
+        }
     }
 }
 
@@ -64,6 +72,17 @@ pub struct Token {
     pub span: Span,
 }
 
+impl Token {
+    fn new(id: TokenId, span: Span) -> Self {
+        Token { id, span }
+    }
+}
+
+pub const EOF_TOKEN: Token = Token {
+    id: TokenId::Eof,
+    span: Span::dummy(),
+};
+
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Token {{ id: {}, span: {} }}", self.id, self.span)
@@ -75,6 +94,7 @@ pub struct Lexer<'a> {
     chars: Peekable<CharIndices<'a>>,
     c_line: usize,
     c_column: usize,
+    has_emitted_eof: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -86,6 +106,7 @@ impl<'a> Lexer<'a> {
             chars: x,
             c_column,
             c_line,
+            has_emitted_eof: false,
         }
     }
 
@@ -189,14 +210,22 @@ impl Iterator for Lexer<'_> {
                 '=' => self.parse_equals(),
                 _ => self.parse_unknown(c),
             };
-            return Some(Token { id: token_id, span });
+            return Some(Token::new(token_id, span));
         }
+
+        if !self.has_emitted_eof {
+            self.has_emitted_eof = true;
+            return Some(EOF_TOKEN);
+        }
+
         None
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::usize;
+
     use super::*;
     use rstest::*;
 
@@ -274,6 +303,7 @@ mod tests {
             cr_id_token("_hi", 1, 2),
             cr_token(TokenId::ParenClose, 1, 5),
             cr_id_token("bye", 2, 1),
+            EOF_TOKEN,
         ];
         let result: Vec<Token> = Lexer::new("(_hi)\nbye").collect();
         assert_eq!(result, expected);

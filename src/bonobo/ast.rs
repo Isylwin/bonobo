@@ -2,7 +2,7 @@
 
 use std::{fmt, iter::Peekable, str::FromStr};
 
-use super::lexer::{Token, TokenId};
+use super::lexer::{EOF_TOKEN, Token, TokenId};
 
 #[derive(Debug)]
 pub enum UnaryOperation {
@@ -163,25 +163,17 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    fn advance(&mut self) -> Option<Token> {
-        self.tokens.next()
-    }
-
-    fn advance_existing(&mut self) -> Result<Token, ParseError> {
-        match self.advance() {
-            Some(token) => Ok(token),
-            _ => Err(ParseError::UnexpectedEof),
+    fn advance(&mut self) -> Token {
+        match self.tokens.next() {
+            Some(token) => token,
+            _ => EOF_TOKEN,
         }
     }
 
-    fn peek(&mut self) -> Option<&Token> {
-        self.tokens.peek()
-    }
-
-    fn peek_existing(&mut self) -> Result<&Token, ParseError> {
-        match self.peek() {
-            Some(token) => Ok(token),
-            _ => Err(ParseError::UnexpectedEof),
+    fn peek(&mut self) -> &Token {
+        match self.tokens.peek() {
+            Some(token) => token,
+            _ => &EOF_TOKEN,
         }
     }
 
@@ -203,12 +195,10 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         F: Fn(&TokenId) -> bool,
     {
         if self.expect(&matcher) {
-            Ok(self.advance().unwrap())
+            Ok(self.advance())
         } else {
-            match self.tokens.peek() {
-                Some(s) => Err(ParseError::UnexpectedToken(s.clone())),
-                None => Err(ParseError::UnexpectedEof),
-            }
+            let s = self.peek();
+            Err(ParseError::UnexpectedToken(s.clone()))
         }
     }
 
@@ -220,7 +210,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     {
         let result = self.expect(&matcher);
         if result {
-            self.advance();
+            let _ = self.advance();
         }
         result
     }
@@ -230,7 +220,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_identifier(&mut self) -> Result<String, ParseError> {
-        let token = self.advance_existing()?;
+        let token = self.advance();
         match token.id {
             TokenId::Id(s) => Ok(s),
             _ => Err(ParseError::UnexpectedToken(token.clone())),
@@ -238,7 +228,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_number(&mut self) -> Result<String, ParseError> {
-        let token = self.advance_existing()?;
+        let token = self.advance();
         match token.id {
             TokenId::Number(s) => Ok(s),
             _ => Err(ParseError::UnexpectedToken(token.clone())),
@@ -337,7 +327,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let expression = self.parse_expression()?;
         let true_branch = self.parse_block()?;
 
-        let next = self.peek_existing()?;
+        let next = self.peek();
         let false_branch = match next.id {
             TokenId::ElIf => Ok(vec![self.parse_if_statement(TokenId::ElIf)?]),
             TokenId::Else => {
@@ -379,7 +369,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_primary(&mut self) -> Result<Node, ParseError> {
-        let token = self.peek_existing()?;
+        let token = self.peek();
         match token.id {
             TokenId::Number(_) => self.parse_constant(),
             _ => Err(ParseError::UnexpectedToken(token.clone())),
@@ -402,7 +392,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 break;
             }
 
-            let token = self.peek_existing()?;
+            let token = self.peek();
             let op = BinaryOperation::from_token_id(&token.id)?;
 
             let (l_bp, r_bp) = op.binding_power();
@@ -413,7 +403,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
                 break;
             }
 
-            self.advance_existing()?;
+            self.advance();
             let rhs = self.parse_expression_bp(r_bp)?;
 
             lhs = Node::BinaryExpression(BinaryExpression {
@@ -432,7 +422,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_statement(&mut self) -> Result<Node, ParseError> {
-        let token = self.peek_existing()?;
+        let token = self.peek();
 
         let (node, needs_semicolon) = match token.id {
             TokenId::Return => (self.parse_unary_operation(UnaryOperation::Return), true),
@@ -450,16 +440,14 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_next(&mut self) -> Result<Node, ParseError> {
-        if let Some(token) = self.peek() {
-            let node = match token.id {
-                TokenId::Fn => self.parse_fn()?,
-                _ => return Err(ParseError::UnexpectedToken(token.clone())),
-            };
+        let token = self.peek();
 
-            return Ok(node);
-        }
+        let node = match token.id {
+            TokenId::Fn => self.parse_fn()?,
+            _ => return Err(ParseError::UnexpectedToken(token.clone())),
+        };
 
-        Err(ParseError::UnexpectedEof)
+        Ok(node)
     }
 
     pub fn parse(&mut self) -> Result<Node, ParseError> {
