@@ -6,6 +6,49 @@ use crate::bonobo::lexer::TokenId;
 
 use super::error::ParseError;
 
+pub trait BindingPower {
+    fn binding_power(&self) -> (u8, u8);
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Operator {
+    Add,
+    Subtract,
+    Multiply,
+    Modulo,
+    Division,
+    Equals,
+    Assignment,
+}
+
+impl BindingPower for Operator {
+    fn binding_power(&self) -> (u8, u8) {
+        match self {
+            Operator::Assignment => (3, 4),
+            Operator::Equals => (17, 18),
+            Operator::Add | Operator::Subtract => (23, 24),
+            Operator::Multiply | Operator::Modulo | Operator::Division => (25, 26),
+        }
+    }
+}
+
+impl TryFrom<&TokenId> for Operator {
+    type Error = ParseError;
+
+    fn try_from(token_id: &TokenId) -> Result<Self, Self::Error> {
+        match token_id {
+            TokenId::Plus => Ok(Self::Add),
+            TokenId::Minus => Ok(Self::Subtract),
+            TokenId::Star => Ok(Self::Multiply),
+            TokenId::Percent => Ok(Self::Modulo),
+            TokenId::Slash => Ok(Self::Division),
+            TokenId::EqualsEquals => Ok(Self::Equals),
+            TokenId::Equals => Ok(Self::Assignment),
+            _ => Err(ParseError::UnknownOperator(token_id.clone())),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum UnaryOperation {
     Return,
@@ -22,26 +65,18 @@ pub enum BinaryOperation {
     Equals,
 }
 
-impl BinaryOperation {
-    pub fn binding_power(&self) -> (u8, u8) {
-        match self {
-            BinaryOperation::Equals => (1, 2),
-            BinaryOperation::Add | BinaryOperation::Subtract => (3, 4),
-            BinaryOperation::Multiply | BinaryOperation::Modulo | BinaryOperation::Division => {
-                (5, 6)
-            }
-        }
-    }
+impl TryFrom<Operator> for BinaryOperation {
+    type Error = ParseError;
 
-    pub fn from_token_id(token_id: &TokenId) -> Result<Self, ParseError> {
-        match token_id {
-            TokenId::Plus => Ok(Self::Add),
-            TokenId::Minus => Ok(Self::Subtract),
-            TokenId::Star => Ok(Self::Multiply),
-            TokenId::Percent => Ok(Self::Modulo),
-            TokenId::Slash => Ok(Self::Division),
-            TokenId::EqualsEquals => Ok(Self::Equals),
-            _ => Err(ParseError::UnknownOperator(token_id.clone())),
+    fn try_from(operator: Operator) -> Result<Self, Self::Error> {
+        match operator {
+            Operator::Add => Ok(Self::Add),
+            Operator::Subtract => Ok(Self::Subtract),
+            Operator::Multiply => Ok(Self::Multiply),
+            Operator::Modulo => Ok(Self::Modulo),
+            Operator::Division => Ok(Self::Division),
+            Operator::Equals => Ok(Self::Equals),
+            _ => Err(ParseError::UnknownBinaryOperation(operator)),
         }
     }
 }
@@ -92,9 +127,19 @@ pub struct IfStatement {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Variable {
+pub struct Identifier {
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct VariableDeclaration {
     pub identifier: String,
     pub type_: Type,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct VariableAssignment {
+    pub identifier: String,
     pub value: Box<Node>,
 }
 
@@ -127,8 +172,10 @@ pub enum Node {
     FunctionDefinition(FunctionDefinition),
     BinaryExpression(BinaryExpression),
     UnaryExpression(UnaryExpression),
+    VariableDeclaration(VariableDeclaration),
+    VariableAssignment(VariableAssignment),
     IfStatement(IfStatement),
-    Variable(Variable),
+    Identifier(Identifier),
     Constant(Constant),
     Error,
 }
@@ -136,5 +183,13 @@ pub enum Node {
 impl Node {
     pub fn is_error(&self) -> bool {
         *self == Node::Error
+    }
+
+    pub fn as_identifier(&self) -> Option<&String> {
+        if let Node::Identifier(ident) = self {
+            Some(&ident.name)
+        } else {
+            None
+        }
     }
 }

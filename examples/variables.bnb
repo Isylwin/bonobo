@@ -1,0 +1,8 @@
+fn main (argc: int, argv: char*) : int {
+    let foo: int;
+    let bar: int;
+    foo = 42;
+    bar = foo - 40;
+    assert foo * bar == 84;
+    return 0;
+}

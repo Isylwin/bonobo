@@ -7,8 +7,8 @@ use std::{
 };
 
 use super::ast::{
-    BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, IfStatement,
-    Node, UnaryExpression, UnaryOperation,
+    BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, Identifier,
+    IfStatement, Node, UnaryExpression, UnaryOperation, VariableAssignment, VariableDeclaration,
 };
 
 #[derive(Debug)]
@@ -23,6 +23,8 @@ struct AsmProgram {
 #[derive(Debug)]
 struct AsmEnvironment {
     labels: HashMap<String, i64>,
+    local_offsets: HashMap<String, i64>,
+    next_local_offset: i64,
 }
 
 #[derive(Debug)]
@@ -60,6 +62,7 @@ pub enum AsmOperand {
     Immediate(i64),
     Label(String),
     Memory(String),
+    StackBase(i64),
 }
 
 const RAX: AsmOperand = AsmOperand::Register(AsmRegister::Rax); // Function return & syscall
@@ -67,6 +70,8 @@ const RBX: AsmOperand = AsmOperand::Register(AsmRegister::Rbx); // preserved
 const RCX: AsmOperand = AsmOperand::Register(AsmRegister::Rcx); // Operand 1
 const RDX: AsmOperand = AsmOperand::Register(AsmRegister::Rdx); // Operand 2
 const RDI: AsmOperand = AsmOperand::Register(AsmRegister::Rdi); // Function arg #1
+const RBP: AsmOperand = AsmOperand::Register(AsmRegister::Rbp); // Base stack pointer
+const RSP: AsmOperand = AsmOperand::Register(AsmRegister::Rsp); // Stack pointer
 const DIL: AsmOperand = AsmOperand::Register(AsmRegister::Dil); // RDI lower byte
 const AL: AsmOperand = AsmOperand::Register(AsmRegister::Al); // RAX lower byte
 
@@ -134,6 +139,7 @@ impl fmt::Display for AsmOperand {
             AsmOperand::Immediate(s) => write!(f, "{}", s),
             AsmOperand::Label(s) => write!(f, "{}", s),
             AsmOperand::Memory(s) => write!(f, "{}", s),
+            AsmOperand::StackBase(offset) => write!(f, "QWORD [rbp{}]", offset),
         }
     }
 }
@@ -141,8 +147,13 @@ impl fmt::Display for AsmOperand {
 impl AsmEnvironment {
     fn new() -> Self {
         let labels = HashMap::new();
+        let local_offsets = HashMap::new();
 
-        AsmEnvironment { labels }
+        AsmEnvironment {
+            labels,
+            local_offsets,
+            next_local_offset: 0,
+        }
     }
 
     fn next_label(&mut self, prefix: &str) -> AsmOperand {
@@ -157,6 +168,16 @@ impl AsmEnvironment {
             }
         };
         AsmOperand::Label(label)
+    }
+
+    fn declare_local(&mut self, identifier: &str) {
+        self.local_offsets
+            .insert(identifier.into(), self.next_local_offset - 8);
+        self.next_local_offset -= 8;
+    }
+
+    fn get_local(&self, identifier: &str) -> Option<i64> {
+        self.local_offsets.get(identifier).copied()
     }
 }
 
@@ -278,12 +299,7 @@ impl Emit for AsmInstruction {
 
 impl Emit for AsmOperand {
     fn emit(&self, writer: &mut dyn Write) -> Result<(), EmitError> {
-        match self {
-            AsmOperand::Register(s) => write!(writer, "{}", s)?,
-            AsmOperand::Immediate(s) => write!(writer, "{}", s)?,
-            AsmOperand::Label(s) => write!(writer, "{}", s)?,
-            AsmOperand::Memory(s) => write!(writer, "{}", s)?,
-        }
+        write!(writer, "{}", self)?;
         Ok(())
     }
 }
@@ -322,6 +338,7 @@ impl Emit for AsmProgram {
 #[derive(Debug)]
 pub enum AsmParseError {
     UnknownAstNode,
+    UndeclaredVariable,
 }
 
 #[derive(Debug)]
@@ -346,15 +363,22 @@ impl AsmParser {
         let label = AsmOperand::Label(label_str.into());
         program.add_instruction(AsmInstruction::Label(label));
 
+        // Push RBP to stack and set to RSP
+        program.add_instruction(AsmInstruction::Push(RBP));
+        program.add_instruction(AsmInstruction::Move(RSP, RBP));
+        // Reserve 24 bytes for stack
+        program.add_instruction(AsmInstruction::Subtract(AsmOperand::Immediate(24), RBP));
+
         //Disregard parameters for now
 
-        let mut result = Ok(program);
-
         for node in &func.body {
-            result = self.parse_node(result?, node);
+            program = self.parse_node(program, node)?;
         }
 
-        result
+        // Pop saved RBP from stack
+        program.add_instruction(AsmInstruction::Pop(RBP));
+
+        Ok(program)
     }
 
     fn parse_if_statement(
@@ -404,6 +428,15 @@ impl AsmParser {
         Ok(prog)
     }
 
+    fn parse_declaration(
+        &self,
+        mut program: AsmProgram,
+        identifier: &str,
+    ) -> Result<AsmProgram, AsmParseError> {
+        program.env.declare_local(identifier);
+        Ok(program)
+    }
+
     fn parse_const_int(
         &self,
         mut program: AsmProgram,
@@ -411,6 +444,22 @@ impl AsmParser {
     ) -> Result<AsmProgram, AsmParseError> {
         program.add_instruction(AsmInstruction::Move(AsmOperand::Immediate(value), RAX));
         program.add_instruction(AsmInstruction::Push(RAX));
+        Ok(program)
+    }
+
+    fn parse_identifier(
+        &self,
+        mut program: AsmProgram,
+        identifier: &str,
+    ) -> Result<AsmProgram, AsmParseError> {
+        let offset = program
+            .env
+            .get_local(identifier)
+            .ok_or(AsmParseError::UndeclaredVariable)?;
+
+        program.add_instruction(AsmInstruction::Move(AsmOperand::StackBase(offset), RAX));
+        program.add_instruction(AsmInstruction::Push(RAX));
+
         Ok(program)
     }
 
@@ -487,6 +536,24 @@ impl AsmParser {
         Ok(program)
     }
 
+    fn parse_assignment(
+        &self,
+        mut program: AsmProgram,
+        identifier: &str,
+        value: &Node,
+    ) -> Result<AsmProgram, AsmParseError> {
+        program = self.parse_node(program, value)?;
+        let offset = program
+            .env
+            .get_local(identifier)
+            .ok_or(AsmParseError::UndeclaredVariable)?;
+
+        program.add_instruction(AsmInstruction::Pop(RAX));
+        program.add_instruction(AsmInstruction::Move(RAX, AsmOperand::StackBase(offset)));
+
+        Ok(program)
+    }
+
     fn parse_node(&self, program: AsmProgram, node: &Node) -> Result<AsmProgram, AsmParseError> {
         let result = match node {
             Node::FunctionDefinition(func) => self.parse_function(program, func),
@@ -498,9 +565,17 @@ impl AsmParser {
                 operation: UnaryOperation::Assert,
                 operand: inner,
             }) => self.parse_assert(program, inner.as_ref()),
+            Node::VariableDeclaration(VariableDeclaration {
+                identifier,
+                type_: _,
+            }) => self.parse_declaration(program, identifier),
+            Node::VariableAssignment(VariableAssignment { identifier, value }) => {
+                self.parse_assignment(program, identifier, value)
+            }
             Node::Constant(Constant {
                 value: ConstantValue::Int64(val),
             }) => self.parse_const_int(program, *val),
+            Node::Identifier(Identifier { name }) => self.parse_identifier(program, name),
             Node::BinaryExpression(BinaryExpression {
                 left: lhs,
                 right: rhs,

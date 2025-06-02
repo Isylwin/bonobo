@@ -13,10 +13,10 @@
 - Assembly frontend
     - Split up to module
     - Write optimizer for assembly frontend
+    - Fix booboo doodoo 24 bytes of reserved space for local stack
 - Grammar
     - while loop
     - function calls
-    - variable assignment
     - compile time const strings
 - Standard library
     - Write more std functions for Bonobo

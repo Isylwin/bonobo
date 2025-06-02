@@ -4,8 +4,9 @@ use crate::{
 };
 
 use super::{
-    BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, IfStatement,
-    Node, Parameter, Type, UnaryExpression, UnaryOperation,
+    BinaryExpression, BinaryOperation, BindingPower, Constant, ConstantValue, FunctionDefinition,
+    Identifier, IfStatement, Node, Operator, Parameter, Type, UnaryExpression, UnaryOperation,
+    VariableAssignment, VariableDeclaration,
     context::{ParseContext, is_token_symbol},
     error::ParseError,
 };
@@ -188,6 +189,34 @@ fn parse_unary_operation<I: Iterator<Item = Token>>(
     Node::UnaryExpression(expr)
 }
 
+fn parse_variable_declaration<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node {
+    if !ctx.advance_required_symbol_logged(TokenId::Let) {
+        return Node::Error;
+    }
+
+    let identifier = match parse_identifier(ctx) {
+        Ok(s) => s,
+        Err(e) => {
+            ctx.log_error(e);
+            return Node::Error;
+        }
+    };
+
+    if !ctx.advance_required_symbol_logged(TokenId::Colon) {
+        return Node::Error;
+    }
+
+    let type_ = match parse_type(ctx) {
+        Ok(s) => s,
+        Err(e) => {
+            ctx.log_error(e);
+            return Node::Error;
+        }
+    };
+
+    Node::VariableDeclaration(VariableDeclaration { identifier, type_ })
+}
+
 fn parse_constant<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node {
     let token = ctx.advance();
 
@@ -206,9 +235,24 @@ fn parse_constant<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node 
     }
 }
 
+fn parse_identifier_expression<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node {
+    let identifier = match parse_identifier(ctx) {
+        Ok(s) => s,
+        Err(e) => {
+            ctx.log_error(e);
+            return Node::Error;
+        }
+    };
+
+    Node::Identifier(Identifier { name: identifier })
+}
+
 fn parse_primary<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node {
     let token = ctx.peek();
-    match_token_id!(ctx, token, &[TokenId::SemiColon, TokenId::Eof], TokenId::Number(_) => parse_constant(ctx))
+    match_token_id!(ctx, token, &[TokenId::SemiColon, TokenId::Eof],
+        TokenId::Number(_) => parse_constant(ctx),
+        TokenId::Id(_) => parse_identifier_expression(ctx)
+    )
 }
 
 fn parse_expression_bp<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>, min_bp: u8) -> Node {
@@ -230,7 +274,7 @@ fn parse_expression_bp<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>, min
         }
 
         let token = ctx.peek();
-        let op_r = BinaryOperation::from_token_id(&token.id);
+        let op_r: Result<Operator, ParseError> = (&token.id).try_into();
 
         match op_r {
             Ok(op) => {
@@ -242,14 +286,45 @@ fn parse_expression_bp<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>, min
                     break;
                 }
 
+                // Consume operator token
                 ctx.advance();
-                let rhs = parse_expression_bp(ctx, r_bp);
 
-                lhs = Node::BinaryExpression(BinaryExpression {
-                    operation: op,
-                    left: Box::new(lhs),
-                    right: Box::new(rhs),
-                })
+                if Operator::Assignment == op {
+                    // --- SPECIAL HANDLING FOR ASSIGNMENT ---
+                    if let Some(identifier_name) = lhs.as_identifier() {
+                        let rhs = parse_expression_bp(ctx, r_bp); // Parse the value on the right
+
+                        lhs = Node::VariableAssignment(VariableAssignment {
+                            identifier: identifier_name.clone(),
+                            value: Box::new(rhs),
+                        });
+                    } else {
+                        ctx.log_error(ParseError::UnexpectedNodeType(
+                            "assignable identifier on left-hand side of assignment".into(),
+                            lhs,
+                        ));
+                        // Attempt to recover by parsing the RHS to clear the stream,
+                        // but ultimately mark the LHS as an error for this operation.
+                        let _ = parse_expression_bp(ctx, r_bp); // Consume the RHS to continue parsing
+                        lhs = Node::Error;
+                    }
+                } else {
+                    // --- REGULAR BINARY OPERATION ---
+                    let rhs = parse_expression_bp(ctx, r_bp);
+                    let binary_op_result: Result<BinaryOperation, ParseError> = op.try_into();
+
+                    lhs = match binary_op_result {
+                        Ok(binary_op) => Node::BinaryExpression(BinaryExpression {
+                            operation: binary_op,
+                            left: Box::new(lhs),
+                            right: Box::new(rhs),
+                        }),
+                        Err(err) => {
+                            ctx.log_error(err);
+                            Node::Error
+                        }
+                    }
+                }
             }
             Err(err) => {
                 ctx.log_error(err);
@@ -272,7 +347,9 @@ fn parse_statement<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node
     let (node, needs_semicolon) = match_token_id!(ctx, token, &[TokenId::SemiColon, TokenId::Eof],
         TokenId::Return => (parse_unary_operation(ctx, UnaryOperation::Return), true),
         TokenId::Assert => (parse_unary_operation(ctx, UnaryOperation::Assert), true),
+        TokenId::Let => (parse_variable_declaration(ctx), true),
         TokenId::If => (parse_if_statement(ctx, TokenId::If), false),
+        TokenId::Id(_) => (parse_expression(ctx), true),
     );
 
     if needs_semicolon {

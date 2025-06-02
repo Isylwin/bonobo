@@ -59,11 +59,18 @@ ifthen:
   just build ifthen
   just run ifthen
 
+# Builds the example/variables.bnb program
+# Output executable will be out/variables
+variables:
+  just build variables
+  just run variables
+
 run-all:
   just return_0
   just assert
   just expressions
   just ifthen
+  just variables
 
 verify:
   cargo fmt

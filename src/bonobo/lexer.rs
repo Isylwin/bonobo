@@ -8,6 +8,7 @@ pub enum TokenId {
     Else,
     Return,
     Assert,
+    Let,
     Id(String),
     Number(String),
     ParenOpen,
@@ -24,6 +25,7 @@ pub enum TokenId {
     Minus,
     Percent,
     Slash,
+    Equals,
     EqualsEquals,
     Unknown(String),
     Eof,
@@ -148,6 +150,7 @@ impl<'a> Lexer<'a> {
             "else" => TokenId::Else,
             "return" => TokenId::Return,
             "assert" => TokenId::Assert,
+            "let" => TokenId::Let,
             _ => TokenId::Id(value),
         }
     }
@@ -175,8 +178,12 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 TokenId::EqualsEquals
             }
-            Some(c) => TokenId::Unknown(format!("={}", c)),
-            _ => TokenId::Unknown("\0".into()),
+            Some(c) if c.is_whitespace() => TokenId::Equals,
+            Some(c) => {
+                self.advance();
+                TokenId::Unknown(format!("={}", c))
+            }
+            None => TokenId::Equals,
         }
     }
 
@@ -263,6 +270,7 @@ mod tests {
     #[case::plus("-", TokenId::Minus)]
     #[case::percent("%", TokenId::Percent)]
     #[case::slash("/", TokenId::Slash)]
+    #[case::equals("=", TokenId::Equals)]
     #[case::equalsequals("==", TokenId::EqualsEquals)]
     #[case::equalsgt("=>", TokenId::Unknown("=>".into()))]
     #[case::fn_("fn", TokenId::Fn)]
@@ -271,6 +279,7 @@ mod tests {
     #[case::else_("else", TokenId::Else)]
     #[case::return_("return", TokenId::Return)]
     #[case::assert_("assert", TokenId::Assert)]
+    #[case::let_("let", TokenId::Let)]
     fn test_lexer_single_token(#[case] src: &str, #[case] expected: TokenId) {
         let a = Token {
             id: expected,
