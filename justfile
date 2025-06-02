@@ -4,7 +4,9 @@ alias v := verify
 
 build-std:
   mkdir -p out/std
-  nasm -f elf64 -g -F dwarf std/assert.asm -o out/std/__assert.o
+  nasm -f elf64 -g -F dwarf std/assert.asm -o out/std/assert.o
+  nasm -f elf64 -g -F dwarf std/_start.asm -o out/std/_start.o
+  ld -r -o out/std/__std.o out/std/_start.o out/std/assert.o
 
 # Usage: just build file_name
 # Builds from: example/<file_name>.bnb
@@ -13,7 +15,7 @@ build file_name: build-std
   mkdir -p out
   cargo run -- examples/{{file_name}}.bnb -o out/{{file_name}}.asm
   nasm -f elf64 -g -F dwarf -o out/{{file_name}}.o out/{{file_name}}.asm
-  ld out/{{file_name}}.o out/std/__assert.o -o out/{{file_name}}
+  ld out/{{file_name}}.o out/std/__std.o -o out/{{file_name}}
 
 # Runs any file in the out directory
 run file_name:

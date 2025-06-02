@@ -52,6 +52,7 @@ pub enum AsmInstruction {
     SignedDivide(AsmOperand),               // divisor
     Xor(AsmOperand, AsmOperand),            // src, dst
     Cqo,
+    Return,
     Syscall,
     FnCall(String),
 }
@@ -183,7 +184,8 @@ impl AsmEnvironment {
 
 impl AsmProgram {
     fn new() -> Self {
-        let globals = vec!["_start".into()];
+        // Assume that the user's program always defines the banana entrypoint
+        let globals = vec!["banana".into()];
         let externs = HashSet::new();
         let text = AsmSection {
             name: ".text".into(),
@@ -291,6 +293,7 @@ impl Emit for AsmInstruction {
             }
             AsmInstruction::Cqo => writeln!(writer, "\t\tcqo")?,
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
+            AsmInstruction::Return => writeln!(writer, "\t\tret")?,
             AsmInstruction::FnCall(s) => writeln!(writer, "\t\tcall\t{}", s)?,
         }
         Ok(())
@@ -356,11 +359,7 @@ impl AsmParser {
         mut program: AsmProgram,
         func: &FunctionDefinition,
     ) -> Result<AsmProgram, AsmParseError> {
-        let label_str = match func.identifier.as_str() {
-            "main" => "_start",
-            s => s,
-        };
-        let label = AsmOperand::Label(label_str.into());
+        let label = AsmOperand::Label(func.identifier.clone());
         program.add_instruction(AsmInstruction::Label(label));
 
         // Push RBP to stack and set to RSP
@@ -375,8 +374,7 @@ impl AsmParser {
             program = self.parse_node(program, node)?;
         }
 
-        // Pop saved RBP from stack
-        program.add_instruction(AsmInstruction::Pop(RBP));
+        // See return implementation for epilogue
 
         Ok(program)
     }
@@ -410,12 +408,14 @@ impl AsmParser {
     fn parse_return(&self, program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
         let mut prog = self.parse_node(program, inner)?;
 
-        prog.add_instruction(AsmInstruction::Pop(RDI));
-        prog.add_instruction(AsmInstruction::Move(
-            AsmOperand::Immediate(60), // platform specific
-            RAX,
-        ));
-        prog.add_instruction(AsmInstruction::Syscall);
+        // Pop into RAX from stack -- assumes we are returning a value
+        prog.add_instruction(AsmInstruction::Pop(RAX));
+
+        // Pop saved RBP from stack
+        prog.add_instruction(AsmInstruction::Pop(RBP));
+
+        // Return from function
+        prog.add_instruction(AsmInstruction::Return);
         Ok(prog)
     }
 

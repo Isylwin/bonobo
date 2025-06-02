@@ -1,4 +1,4 @@
-fn main (argc: int, argv: char*) : int {
+fn banana (argc: int, argv: char*) : int {
     assert 12 + 11 == 23;
     assert 5 - 2 - 2 == 1;
     assert 4 * 3 == 12;

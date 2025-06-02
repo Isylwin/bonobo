@@ -1,4 +1,4 @@
-fn main (argc: int, argv: char*) : int {
+fn banana (argc: int, argv: char*) : int {
     let foo: int;
     let bar: int;
     foo = 42;

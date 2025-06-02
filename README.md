@@ -21,7 +21,6 @@
 - Standard library
     - Write more std functions for Bonobo
         - print to output and read from input
-    - Call program from bonobo standard library
     - argc and argv
 - General
     - Bonobo program which tests its own language
@@ -49,6 +48,8 @@ The targeted assembly language dialect is NASM.
 This means that the only supported CPU architecture is x86 as NASM solely targets x86
 An attempt might be made to support both NASM as well as GAS in the future.
 
+The generated assembly code adheres to the System V AMD64 ABI calling convention,
+as the supported operating system is Linux.
 
 ## Other stuff
 

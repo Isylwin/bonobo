@@ -1,4 +1,4 @@
-fn main (argc: int, argv: char*) : int {
+fn banana (argc: int, argv: char*) : int {
     if 1 {
         assert 1;
     } elif 0 {

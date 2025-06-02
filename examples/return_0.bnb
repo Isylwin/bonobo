@@ -1,3 +1,3 @@
-fn main (argc: int, argv: char*) : int {
+fn banana (argc: int, argv: char*) : int {
     return 0;
 }
