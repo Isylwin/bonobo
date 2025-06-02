@@ -48,3 +48,44 @@ No attempt is made at this time to separate the assembly generation from Linux c
 The targeted assembly language dialect is NASM.
 This means that the only supported CPU architecture is x86 as NASM solely targets x86
 An attempt might be made to support both NASM as well as GAS in the future.
+
+
+## Other stuff
+
+### Operator precendence
+
+| Precedence | Operator     | Description                                       | Associativity |
+|------------|--------------|---------------------------------------------------|---------------|
+|    29,30   | ++ --        | Suffix/postfix increment and decrement            | Left-to-right |
+|            | ()           | Function call                                     |               |
+|            | []           | Array subscripting                                |               |
+|            | .            | Structure and union member access                 |               |
+|            | ->           | Structure and union member access through pointer |               |
+|            | (type){list} | Compound literal(C99)                             |               |
+|    27,28   | ++ --        | Prefix increment and decrement[note 1]            | Right-to-left |
+|            | + -          | Unary plus and minus                              |               |
+|            | ! ~          | Logical NOT and bitwise NOT                       |               |
+|            | (type)       | Cast                                              |               |
+|            | *            | Indirection (dereference)                         |               |
+|            | &            | Address-of                                        |               |
+|            | sizeof       | Size-of[note 2]                                   |               |
+|            | _Alignof     | Alignment requirement(C11)                        |               |
+|    25,26   | * / %        | Multiplication, division, and remainder           | Left-to-right |
+|    23,24   | + -          | Addition and subtraction                          |               |
+|    21,22   | << >>        | Bitwise left shift and right shift                |               |
+|    19,20   | < <=         | For relational operators < and ≤ respectively     |               |
+|            | > >=         | For relational operators > and ≥ respectively     |               |
+|    17,18   | == !=        | For relational = and ≠ respectively               |               |
+|    15,16   | &            | Bitwise AND                                       |               |
+|    13,14   | ^            | Bitwise XOR (exclusive or)                        |               |
+|    11,12   | \|           | Bitwise OR (inclusive or)                         |               |
+|     9,10   | &&           | Logical AND                                       |               |
+|     7,8    | \|\|         | Logical OR                                        |               |
+|     5,6    | ?:           | Ternary conditional[note 3]                       | Right-to-left |
+|     3,4    | =            | Simple assignment                                 |               |
+|            | += -=        | Assignment by sum and difference                  |               |
+|            | *= /= %=     | Assignment by product, quotient, and remainder    |               |
+|            | <<= >>=      | Assignment by bitwise left shift and right shift  |               |
+|            | &= ^= \|=    | Assignment by bitwise AND, XOR, and OR            |               |
+|     1,2    | ,            | Comma                                             | Left-to-right |
+
