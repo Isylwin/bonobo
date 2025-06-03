@@ -1,6 +1,6 @@
-<program>               ::= <function_definition>
-<function_definition>   ::= "fn" <w>+ <identifier> <w>* "(" <w>* <parameter_list>? <w>* ")" <w>* ":" <w>* <type> <w>* <block>
-<parameter_list>        ::= <parameter> (<w>* "," <w>* <parameter>)*
+<program>               ::= (<w>* <function_definition> <w>*)*
+<function_definition>   ::= "fn" <w>+ <identifier> <paren_open> <parameter_list>? <paren_close> ":" <w>* <type> <w>* <block>
+<parameter_list>        ::= <parameter> (<comma> <parameter>)*
 <parameter>             ::= <identifier> <w>* ":" <w>* <type>
 <type>                  ::= ("int" | "char") <pointer_suffix>?
 <pointer_suffix>        ::= "*" <pointer_suffix>?
@@ -14,7 +14,8 @@
 <assignment_statement>  ::= <identifier> <equal> <expression> <w>* <end_of_statement>
 <expression_statement>  ::= <expression> <w>* <end_of_statement>
 <end_of_statement>      ::= ";"
-<expression>            ::= <constant> | <identifier> | <addition> | <substraction> | <multiplication> | <modulo> | <division> | <equals>
+<primary_expression>    ::= <constant> | <identifier> | <function_call>
+<expression>            ::= <primary_expression> | <addition> | <substraction> | <multiplication> | <modulo> | <division> | <equals>
 <addition>              ::= <expression> <plus> <expression>
 <substraction>          ::= <expression> <minus> <expression>
 <multiplication>        ::= <expression> <star> <expression>
@@ -23,6 +24,8 @@
 <equals>                ::= <expression> <equalequal> <expression>
 <constant>              ::= <number>
 <number>                ::= <digit>+
+<function_call>         ::= <identifier> <paren_open> <function_args>? <paren_close>
+<function_args>         ::= <expression> (<comma> <expression>)*
 <identifier>            ::= (<letter> | "_") <identifier_rest>*
 <identifier_rest>       ::= <letter> | <digit> | "_"
 <letter>                ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"
@@ -35,3 +38,6 @@
 <slash>                 ::= <w>* "/" <w>*
 <equalequal>            ::= <w>* "=" "=" <w>*
 <equal>                 ::= <w>* "=" <w>*
+<paren_open>            ::= <w>* "(" <w>*
+<paren_close>           ::= <w>* ")" <w>*
+<comma>                 ::= <w>* "," <w>*

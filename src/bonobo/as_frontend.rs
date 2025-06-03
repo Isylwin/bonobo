@@ -4,7 +4,10 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     io::{self, Write},
+    iter::zip,
 };
+
+use crate::bonobo::ast::{AstProgram, FunctionCall};
 
 use super::ast::{
     BinaryExpression, BinaryOperation, Constant, ConstantValue, FunctionDefinition, Identifier,
@@ -18,11 +21,11 @@ struct AsmProgram {
     text: AsmSection,
     data: AsmSection,
     env: AsmEnvironment,
+    labels: HashMap<String, i64>,
 }
 
 #[derive(Debug)]
 struct AsmEnvironment {
-    labels: HashMap<String, i64>,
     local_offsets: HashMap<String, i64>,
     next_local_offset: i64,
 }
@@ -68,9 +71,10 @@ pub enum AsmOperand {
 
 const RAX: AsmOperand = AsmOperand::Register(AsmRegister::Rax); // Function return & syscall
 const RBX: AsmOperand = AsmOperand::Register(AsmRegister::Rbx); // preserved
-const RCX: AsmOperand = AsmOperand::Register(AsmRegister::Rcx); // Operand 1
-const RDX: AsmOperand = AsmOperand::Register(AsmRegister::Rdx); // Operand 2
 const RDI: AsmOperand = AsmOperand::Register(AsmRegister::Rdi); // Function arg #1
+const RSI: AsmOperand = AsmOperand::Register(AsmRegister::Rsi); // Function arg #2
+const RDX: AsmOperand = AsmOperand::Register(AsmRegister::Rdx); // Function arg #3
+const RCX: AsmOperand = AsmOperand::Register(AsmRegister::Rcx); // Function arg #4
 const RBP: AsmOperand = AsmOperand::Register(AsmRegister::Rbp); // Base stack pointer
 const RSP: AsmOperand = AsmOperand::Register(AsmRegister::Rsp); // Stack pointer
 const DIL: AsmOperand = AsmOperand::Register(AsmRegister::Dil); // RDI lower byte
@@ -78,6 +82,10 @@ const AL: AsmOperand = AsmOperand::Register(AsmRegister::Al); // RAX lower byte
 
 const FALSE: AsmOperand = AsmOperand::Immediate(0);
 const TRUE: AsmOperand = AsmOperand::Immediate(1);
+
+// System V AMD64 ABI calling convention defines these registers
+// as the order for the first 4 arguments to a function
+const FN_ARG_REG: [AsmOperand; 4] = [RDI, RSI, RDX, RCX];
 
 macro_rules! xor {
     ($reg:ident) => {
@@ -147,28 +155,12 @@ impl fmt::Display for AsmOperand {
 
 impl AsmEnvironment {
     fn new() -> Self {
-        let labels = HashMap::new();
         let local_offsets = HashMap::new();
 
         AsmEnvironment {
-            labels,
             local_offsets,
             next_local_offset: 0,
         }
-    }
-
-    fn next_label(&mut self, prefix: &str) -> AsmOperand {
-        let label = match self.labels.get_mut(prefix) {
-            Some(v) => {
-                *v += 1;
-                format!("{}{}", prefix, v)
-            }
-            None => {
-                self.labels.insert(prefix.into(), 0);
-                format!("{}0", prefix)
-            }
-        };
-        AsmOperand::Label(label)
     }
 
     fn declare_local(&mut self, identifier: &str) {
@@ -196,6 +188,7 @@ impl AsmProgram {
             instructions: vec![],
         };
         let env = AsmEnvironment::new();
+        let labels = HashMap::new();
 
         AsmProgram {
             externs,
@@ -203,6 +196,7 @@ impl AsmProgram {
             text,
             data,
             env,
+            labels,
         }
     }
 
@@ -215,7 +209,21 @@ impl AsmProgram {
     }
 
     fn gen_label(&mut self, prefix: &str) -> AsmOperand {
-        self.env.next_label(prefix)
+        let label = match self.labels.get_mut(prefix) {
+            Some(v) => {
+                *v += 1;
+                format!("{}{}", prefix, v)
+            }
+            None => {
+                self.labels.insert(prefix.into(), 0);
+                format!("{}0", prefix)
+            }
+        };
+        AsmOperand::Label(label)
+    }
+
+    fn reset_env(&mut self) {
+        self.env = AsmEnvironment::new();
     }
 }
 
@@ -342,16 +350,17 @@ impl Emit for AsmProgram {
 pub enum AsmParseError {
     UnknownAstNode,
     UndeclaredVariable,
+    TooManyArguments,
 }
 
 #[derive(Debug)]
 struct AsmParser {
-    root: Node,
+    program: AstProgram,
 }
 
 impl AsmParser {
-    fn new(root: Node) -> Self {
-        AsmParser { root }
+    fn new(program: AstProgram) -> Self {
+        AsmParser { program }
     }
 
     fn parse_function(
@@ -359,17 +368,37 @@ impl AsmParser {
         mut program: AsmProgram,
         func: &FunctionDefinition,
     ) -> Result<AsmProgram, AsmParseError> {
+        // Throw error if parameters exceed max supported length
+        if func.parameters.len() > 4 {
+            return Err(AsmParseError::TooManyArguments);
+        }
+
+        program.reset_env();
+
         let label = AsmOperand::Label(func.identifier.clone());
         program.add_instruction(AsmInstruction::Label(label));
 
         // Push RBP to stack and set to RSP
         program.add_instruction(AsmInstruction::Push(RBP));
         program.add_instruction(AsmInstruction::Move(RSP, RBP));
-        // Reserve 24 bytes for stack
-        program.add_instruction(AsmInstruction::Subtract(AsmOperand::Immediate(24), RBP));
+        // Reserve 32 bytes for stack
+        program.add_instruction(AsmInstruction::Subtract(AsmOperand::Immediate(32), RBP));
 
-        //Disregard parameters for now
+        // --- Parse parameters ---
+        let param_zip = zip(&func.parameters, FN_ARG_REG);
+        for (param, src) in param_zip {
+            // Declare the param as a local variable and store it using the RBP
+            program.env.declare_local(&param.name);
 
+            let offset = program
+                .env
+                .get_local(&param.name)
+                .ok_or(AsmParseError::UndeclaredVariable)?;
+
+            program.add_instruction(AsmInstruction::Move(src, AsmOperand::StackBase(offset)));
+        }
+
+        // --- Parse body ---
         for node in &func.body {
             program = self.parse_node(program, node)?;
         }
@@ -554,6 +583,36 @@ impl AsmParser {
         Ok(program)
     }
 
+    fn parse_function_call(
+        &self,
+        mut program: AsmProgram,
+        fn_call: &FunctionCall,
+    ) -> Result<AsmProgram, AsmParseError> {
+        // Only support 4 args for now
+        if fn_call.arguments.len() > 4 {
+            return Err(AsmParseError::TooManyArguments);
+        }
+
+        // Create zipped iterator over the argument registers and the arguments
+        let arg_zip = zip(&fn_call.arguments, FN_ARG_REG);
+
+        // MAYBE Check for existence of function
+
+        // Throw relevant args in their respective registers
+        for (arg, dst) in arg_zip {
+            program = self.parse_node(program, arg)?;
+            program.add_instruction(AsmInstruction::Pop(dst));
+        }
+
+        // Call function
+        program.add_instruction(AsmInstruction::FnCall(fn_call.identifier.clone()));
+
+        // Push result onto stack
+        program.add_instruction(AsmInstruction::Push(RAX));
+
+        Ok(program)
+    }
+
     fn parse_node(&self, program: AsmProgram, node: &Node) -> Result<AsmProgram, AsmParseError> {
         let result = match node {
             Node::FunctionDefinition(func) => self.parse_function(program, func),
@@ -582,20 +641,24 @@ impl AsmParser {
                 operation: op,
             }) => self.parse_binary_expression(program, op, lhs.as_ref(), rhs.as_ref()),
             Node::IfStatement(if_stmt) => self.parse_if_statement(program, if_stmt),
-            _ => Err(AsmParseError::UnknownAstNode),
+            Node::FunctionCall(fn_call) => self.parse_function_call(program, fn_call),
+            Node::Error => Err(AsmParseError::UnknownAstNode),
         };
 
         result
     }
 
     fn parse(&self) -> Result<AsmProgram, AsmParseError> {
-        let program = AsmProgram::new();
-        self.parse_node(program, &self.root)
+        let mut program = AsmProgram::new();
+        for node in &self.program.functions {
+            program = self.parse_node(program, node)?;
+        }
+        Ok(program)
     }
 }
 
-pub fn emit(root: Node, writer: &mut dyn Write) -> Result<(), EmitError> {
-    let parser = AsmParser::new(root);
+pub fn emit(ast_program: AstProgram, writer: &mut dyn Write) -> Result<(), EmitError> {
+    let parser = AsmParser::new(ast_program);
     let program = parser.parse();
 
     program?.emit(writer)

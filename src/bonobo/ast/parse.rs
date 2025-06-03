@@ -1,5 +1,8 @@
 use crate::{
-    bonobo::lexer::{Lexer, Token, TokenId},
+    bonobo::{
+        ast::{AstProgram, FunctionCall},
+        lexer::{Lexer, Token, TokenId},
+    },
     match_token_id,
 };
 
@@ -244,7 +247,43 @@ fn parse_identifier_expression<I: Iterator<Item = Token>>(ctx: &mut ParseContext
         }
     };
 
-    Node::Identifier(Identifier { name: identifier })
+    // If the next token is a ParenOpen, then we are a function call
+    if ctx.peek().id == TokenId::ParenOpen {
+        parse_function_call(ctx, identifier)
+    } else {
+        Node::Identifier(Identifier { name: identifier })
+    }
+}
+
+fn parse_function_call<I: Iterator<Item = Token>>(
+    ctx: &mut ParseContext<I>,
+    identifier: String,
+) -> Node {
+    if !ctx.advance_required_symbol_logged(TokenId::ParenOpen) {
+        return Node::Error;
+    }
+
+    let mut arguments = vec![];
+
+    // Loop until a closing parenthesis has been found e.g:
+    // ()
+    // (a)
+    // (a, b)
+    // (a, b,)
+    loop {
+        if ctx.has_fatal() || ctx.advance_optional(is_token_symbol(TokenId::ParenClose)) {
+            break;
+        }
+
+        arguments.push(parse_expression(ctx));
+
+        ctx.advance_optional(is_token_symbol(TokenId::Comma));
+    }
+
+    Node::FunctionCall(FunctionCall {
+        identifier,
+        arguments,
+    })
 }
 
 fn parse_primary<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node {
@@ -265,10 +304,14 @@ fn parse_expression_bp<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>, min
         // ------------------
         // Expressions are also valid within an if statement
         // Then the expression ends when a brace is encountered
+        // If the expression is part of a function call
+        // then the processing needs to end on a ParenClose or Comma
         if lhs.is_error()
             || ctx.has_fatal()
             || ctx.expect(is_token_symbol(TokenId::SemiColon))
             || ctx.expect(is_token_symbol(TokenId::BraceOpen))
+            || ctx.expect(is_token_symbol(TokenId::ParenClose))
+            || ctx.expect(is_token_symbol(TokenId::Comma))
         {
             break;
         }
@@ -362,17 +405,31 @@ fn parse_statement<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node
     node
 }
 
-fn parse_next<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Node {
+fn parse_next<I: Iterator<Item = Token>>(ctx: &mut ParseContext<I>) -> Option<Node> {
     let token = ctx.peek();
 
-    match_token_id!(ctx, token, &[TokenId::SemiColon, TokenId::Eof], TokenId::Fn => parse_fn(ctx))
+    match token.id {
+        TokenId::Fn => Some(parse_fn(ctx)),
+        TokenId::Eof => None,
+        _ => {
+            let err = ParseError::UnexpectedToken(token.clone());
+            ctx.log_error(err);
+            ctx.synchronize(&[TokenId::SemiColon, TokenId::Eof]);
+            Some(Node::Error)
+        }
+    }
 }
 
-pub fn parse(lexer: Lexer) -> Node {
+pub fn parse(lexer: Lexer) -> AstProgram {
     let mut ctx = ParseContext::new(lexer);
-    let node = parse_next(&mut ctx);
+
+    let mut functions = vec![];
+
+    while let Some(node) = parse_next(&mut ctx) {
+        functions.push(node);
+    }
 
     ctx.print_errors();
 
-    node
+    AstProgram { functions }
 }

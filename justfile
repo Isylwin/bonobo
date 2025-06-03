@@ -67,6 +67,12 @@ variables:
   just build variables
   just run variables
 
+# Builds the example/function_call.bnb program
+# Output executable will be out/function_call
+function_call:
+  just build function_call
+  just run function_call
+
 run-all:
   just return_0
   just assert

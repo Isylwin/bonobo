@@ -168,6 +168,17 @@ pub struct Constant {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct FunctionCall {
+    pub identifier: String,
+    pub arguments: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AstProgram {
+    pub functions: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Node {
     FunctionDefinition(FunctionDefinition),
     BinaryExpression(BinaryExpression),
@@ -177,6 +188,7 @@ pub enum Node {
     IfStatement(IfStatement),
     Identifier(Identifier),
     Constant(Constant),
+    FunctionCall(FunctionCall),
     Error,
 }
 

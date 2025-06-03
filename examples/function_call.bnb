@@ -1,0 +1,25 @@
+fn banana(argc: int, argv: char*) : int {
+    let result: int;
+
+    result = foo(10, 20);
+
+    return result;
+}
+
+fn foo(a: int, b: int) : int {
+    let c: int;
+
+    assert a;
+    assert b;
+
+    c = bar(a,b,a,b);
+    assert c;
+
+    return a + b - c;
+}
+
+fn bar(d: int, e: int, f: int, g: int) : int {
+    assert f;
+    assert g;
+    return d + e;
+}
