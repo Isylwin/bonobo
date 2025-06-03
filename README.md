@@ -7,7 +7,6 @@
     - More robust AST error handling
         - Return a ParseResult rather than a Node
         - Actually consider when to synchronize to what tokens
-    - Split up to module
     - Type verification for AST -> TypedAST
     - Semantic verification -> e.g. function must provide return statement
 - Assembly frontend
