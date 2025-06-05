@@ -45,13 +45,12 @@ impl AsmOptimizer {
             passes += 1;
 
             // Apply different optimization passes
-            optimized |= self.peephole_optimize(&mut section.instructions);
-            optimized |= self.remove_redundant_moves(&mut section.instructions);
             optimized |= self.remove_dead_code(&mut section.instructions);
+            optimized |= self.optimize_stack_operations(&mut section.instructions);
+            optimized |= self.peephole_optimize(&mut section.instructions);
             optimized |= self.fold_constants(&mut section.instructions);
             optimized |= self.optimize_arithmetic(&mut section.instructions);
-            optimized |= self.optimize_stack_operations(&mut section.instructions);
-            optimized |= self.remove_redundant_comparisons(&mut section.instructions);
+            optimized |= self.remove_redundant_moves(&mut section.instructions);
         }
     }
 
@@ -65,7 +64,6 @@ impl AsmOptimizer {
                     // Remove moves where source and destination are the same
                     !operands_equal(src, dst)
                 }
-                AsmInstruction::Nop => false,
                 _ => true,
             }
         });
@@ -196,7 +194,7 @@ impl AsmOptimizer {
         let mut i = 0;
 
         while i + 1 < instructions.len() {
-            // Look for push/pop of same register -> nop
+            // Look for push/pop of same register -> remove both
             if let (AsmInstruction::Push(src), AsmInstruction::Pop(dst)) =
                 (&instructions[i], &instructions[i + 1])
             {
@@ -227,53 +225,12 @@ impl AsmOptimizer {
         changed
     }
 
-    /// Remove redundant comparisons
-    fn remove_redundant_comparisons(&mut self, instructions: &mut Vec<AsmInstruction>) -> bool {
-        let mut changed = false;
+    /// Peephole optimization: look for specific patterns and replace them
+    fn peephole_optimize(&mut self, instructions: &mut [AsmInstruction]) -> bool {
+        let changed = false;
         let mut i = 0;
 
         while i + 1 < instructions.len() {
-            // Look for repeated comparisons
-            if let (AsmInstruction::Compare(src1, dst1), AsmInstruction::Compare(src2, dst2)) =
-                (&instructions[i], &instructions[i + 1])
-            {
-                if operands_equal(src1, src2) && operands_equal(dst1, dst2) {
-                    // Remove the second comparison
-                    instructions.remove(i + 1);
-                    changed = true;
-                    continue;
-                }
-            }
-
-            i += 1;
-        }
-
-        changed
-    }
-
-    /// Peephole optimization: look for specific patterns and replace them
-    fn peephole_optimize(&mut self, instructions: &mut Vec<AsmInstruction>) -> bool {
-        let mut changed = false;
-        let mut i = 0;
-
-        while i < instructions.len() {
-            // Pattern: mov reg, 0; add reg, val -> mov reg, val
-            if i + 1 < instructions.len() {
-                if let (
-                    AsmInstruction::Move(FALSE, dst1),
-                    AsmInstruction::Add(AsmOperand::Immediate(val), dst2),
-                ) = (&instructions[i], &instructions[i + 1])
-                {
-                    if operands_equal(dst1, dst2) {
-                        instructions[i] =
-                            AsmInstruction::Move(AsmOperand::Immediate(*val), dst1.clone());
-                        instructions.remove(i + 1);
-                        changed = true;
-                        continue;
-                    }
-                }
-            }
-
             i += 1;
         }
 
@@ -486,36 +443,6 @@ mod tests {
             assert!(matches!(dst, &RBX));
         } else {
             panic!("Expected push/pop to be converted to move");
-        }
-    }
-
-    #[test]
-    fn test_comparison_optimization_duplicate_removal() {
-        let mut optimizer = AsmOptimizer::new();
-        let mut instructions = vec![
-            AsmInstruction::Compare(RAX, FALSE),
-            AsmInstruction::Compare(RAX, FALSE),
-            AsmInstruction::JumpEqual(AsmOperand::Label("zero".to_string())),
-        ];
-
-        optimizer.remove_redundant_comparisons(&mut instructions);
-        assert_eq!(instructions.len(), 2); // One compare and the jump should remain
-    }
-
-    #[test]
-    fn test_peephole_mov_zero_add() {
-        let mut optimizer = AsmOptimizer::new();
-        let mut instructions = vec![
-            AsmInstruction::Move(FALSE, RAX),
-            AsmInstruction::Add(AsmOperand::Immediate(42), RAX),
-        ];
-
-        optimizer.peephole_optimize(&mut instructions);
-        assert_eq!(instructions.len(), 1);
-        if let AsmInstruction::Move(AsmOperand::Immediate(val), _) = &instructions[0] {
-            assert_eq!(*val, 42);
-        } else {
-            panic!("Expected mov with immediate 42");
         }
     }
 
