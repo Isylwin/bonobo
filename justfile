@@ -79,6 +79,7 @@ run-all:
   just expressions
   just ifthen
   just variables
+  just function_call
 
 verify:
   cargo fmt
