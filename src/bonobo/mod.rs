@@ -3,7 +3,7 @@ use std::io::{BufReader, BufWriter, prelude::*};
 
 use anyhow::Result;
 
-use asm::emit;
+use asm::emit_asm_code;
 use ast::parse;
 use lexer::Lexer;
 
@@ -47,7 +47,7 @@ impl Compiler {
             println!("{:?}", result);
         }
 
-        emit(result, &mut self.output_stream).expect("Unable to write data");
+        emit_asm_code(result, &mut self.output_stream).expect("Unable to write data");
         Ok(())
     }
 }

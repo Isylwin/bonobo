@@ -8,4 +8,4 @@ pub use operand::{AsmInstruction, AsmOperand};
 pub use program::AsmProgram;
 
 // Re-export the main public API
-pub use parser::emit;
+pub use parser::emit_asm_code;
