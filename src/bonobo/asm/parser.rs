@@ -24,9 +24,9 @@ pub enum AsmParseError {
 }
 
 fn parse_function(
-    mut program: AsmProgram,
+    program: &mut AsmProgram,
     func: &FunctionDefinition,
-) -> Result<AsmProgram, AsmParseError> {
+) -> Result<(), AsmParseError> {
     // Throw error if parameters exceed max supported length
     if func.parameters.len() > 4 {
         return Err(AsmParseError::TooManyArguments);
@@ -59,80 +59,73 @@ fn parse_function(
 
     // --- Parse body ---
     for node in &func.body {
-        program = parse_node(program, node)?;
+        parse_node(program, node)?;
     }
 
     // See return implementation for epilogue
 
-    Ok(program)
+    Ok(())
 }
 
 fn parse_if_statement(
-    program: AsmProgram,
+    program: &mut AsmProgram,
     if_stmt: &IfStatement,
-) -> Result<AsmProgram, AsmParseError> {
-    let mut prog = parse_node(program, if_stmt.expression.as_ref())?;
+) -> Result<(), AsmParseError> {
+    parse_node(program, if_stmt.expression.as_ref())?;
 
-    let true_label = prog.gen_label("if_t_");
-    let end_label = prog.gen_label("if_e_");
+    let true_label = program.gen_label("if_t_");
+    let end_label = program.gen_label("if_e_");
 
-    prog.add_instruction(AsmInstruction::Pop(RAX));
-    prog.add_instruction(AsmInstruction::Compare(TRUE, RAX));
-    prog.add_instruction(AsmInstruction::JumpEqual(true_label.clone()));
+    program.add_instruction(AsmInstruction::Pop(RAX));
+    program.add_instruction(AsmInstruction::Compare(TRUE, RAX));
+    program.add_instruction(AsmInstruction::JumpEqual(true_label.clone()));
     for node in &if_stmt.false_branch {
-        prog = parse_node(prog, node)?;
+        parse_node(program, node)?;
     }
-    prog.add_instruction(AsmInstruction::Jump(end_label.clone()));
-    prog.add_instruction(AsmInstruction::Label(true_label));
+    program.add_instruction(AsmInstruction::Jump(end_label.clone()));
+    program.add_instruction(AsmInstruction::Label(true_label));
     for node in &if_stmt.true_branch {
-        prog = parse_node(prog, node)?;
+        parse_node(program, node)?;
     }
-    prog.add_instruction(AsmInstruction::Label(end_label));
-
-    Ok(prog)
+    program.add_instruction(AsmInstruction::Label(end_label));
+    Ok(())
 }
 
-fn parse_return(program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
-    let mut prog = parse_node(program, inner)?;
+fn parse_return(program: &mut AsmProgram, inner: &Node) -> Result<(), AsmParseError> {
+    parse_node(program, inner)?;
 
     // Pop into RAX from stack -- assumes we are returning a value
-    prog.add_instruction(AsmInstruction::Pop(RAX));
+    program.add_instruction(AsmInstruction::Pop(RAX));
 
     // Pop saved RBP from stack
-    prog.add_instruction(AsmInstruction::Pop(RBP));
+    program.add_instruction(AsmInstruction::Pop(RBP));
 
     // Return from function
-    prog.add_instruction(AsmInstruction::Return);
-    Ok(prog)
+    program.add_instruction(AsmInstruction::Return);
+    Ok(())
 }
 
-fn parse_assert(program: AsmProgram, inner: &Node) -> Result<AsmProgram, AsmParseError> {
-    let mut prog = parse_node(program, inner)?;
+fn parse_assert(program: &mut AsmProgram, inner: &Node) -> Result<(), AsmParseError> {
+    parse_node(program, inner)?;
 
-    prog.add_extern("assert");
-    prog.add_instruction(AsmInstruction::Pop(RDI));
-    prog.add_instruction(AsmInstruction::FnCall("assert".into()));
-    Ok(prog)
+    program.add_extern("assert");
+    program.add_instruction(AsmInstruction::Pop(RDI));
+    program.add_instruction(AsmInstruction::FnCall("assert".into()));
+    Ok(())
 }
 
-fn parse_declaration(
-    mut program: AsmProgram,
-    identifier: &str,
-) -> Result<AsmProgram, AsmParseError> {
+fn parse_declaration(program: &mut AsmProgram, identifier: &str) -> Result<(), AsmParseError> {
     program.env.declare_local(identifier);
-    Ok(program)
+    Ok(())
 }
 
-fn parse_const_int(mut program: AsmProgram, value: i64) -> Result<AsmProgram, AsmParseError> {
+fn parse_const_int(program: &mut AsmProgram, value: i64) -> Result<(), AsmParseError> {
     program.add_instruction(AsmInstruction::Move(AsmOperand::Immediate(value), RAX));
     program.add_instruction(AsmInstruction::Push(RAX));
-    Ok(program)
+    Ok(())
 }
 
-fn parse_identifier(
-    mut program: AsmProgram,
-    identifier: &str,
-) -> Result<AsmProgram, AsmParseError> {
+fn parse_identifier(program: &mut AsmProgram, identifier: &str) -> Result<(), AsmParseError> {
     let offset = program
         .env
         .get_local(identifier)
@@ -141,15 +134,15 @@ fn parse_identifier(
     program.add_instruction(AsmInstruction::Move(AsmOperand::StackBase(offset), RAX));
     program.add_instruction(AsmInstruction::Push(RAX));
 
-    Ok(program)
+    Ok(())
 }
 
 fn parse_binary_expression(
-    mut program: AsmProgram,
+    program: &mut AsmProgram,
     op: &BinaryOperation,
     lhs: &Node,
     rhs: &Node,
-) -> Result<AsmProgram, AsmParseError> {
+) -> Result<(), AsmParseError> {
     // Output of binary expression will be stored on stack
 
     // First generate the right hand side
@@ -157,8 +150,8 @@ fn parse_binary_expression(
     // The RHS needs to be substracted from the LHS
     // and the result should end up in the RDI register
 
-    program = parse_node(program, lhs)?;
-    program = parse_node(program, rhs)?;
+    parse_node(program, lhs)?;
+    parse_node(program, rhs)?;
 
     // LHS = 2nd on stack
     // RHS = 1st on stack
@@ -213,15 +206,16 @@ fn parse_binary_expression(
             program.add_instruction(AsmInstruction::Push(RAX));
         }
     }
-    Ok(program)
+    Ok(())
 }
 
 fn parse_assignment(
-    mut program: AsmProgram,
+    program: &mut AsmProgram,
     identifier: &str,
     value: &Node,
-) -> Result<AsmProgram, AsmParseError> {
-    program = parse_node(program, value)?;
+) -> Result<(), AsmParseError> {
+    parse_node(program, value)?;
+
     let offset = program
         .env
         .get_local(identifier)
@@ -230,13 +224,13 @@ fn parse_assignment(
     program.add_instruction(AsmInstruction::Pop(RAX));
     program.add_instruction(AsmInstruction::Move(RAX, AsmOperand::StackBase(offset)));
 
-    Ok(program)
+    Ok(())
 }
 
 fn parse_function_call(
-    mut program: AsmProgram,
+    program: &mut AsmProgram,
     fn_call: &FunctionCall,
-) -> Result<AsmProgram, AsmParseError> {
+) -> Result<(), AsmParseError> {
     // Only support 4 args for now
     if fn_call.arguments.len() > 4 {
         return Err(AsmParseError::TooManyArguments);
@@ -249,7 +243,7 @@ fn parse_function_call(
 
     // Throw relevant args in their respective registers
     for (arg, dst) in arg_zip {
-        program = parse_node(program, arg)?;
+        parse_node(program, arg)?;
         program.add_instruction(AsmInstruction::Pop(dst));
     }
 
@@ -259,10 +253,10 @@ fn parse_function_call(
     // Push result onto stack
     program.add_instruction(AsmInstruction::Push(RAX));
 
-    Ok(program)
+    Ok(())
 }
 
-fn parse_node(program: AsmProgram, node: &Node) -> Result<AsmProgram, AsmParseError> {
+fn parse_node(program: &mut AsmProgram, node: &Node) -> Result<(), AsmParseError> {
     match node {
         Node::FunctionDefinition(func) => parse_function(program, func),
         Node::UnaryExpression(UnaryExpression {
@@ -298,7 +292,7 @@ fn parse_node(program: AsmProgram, node: &Node) -> Result<AsmProgram, AsmParseEr
 pub fn parse_ast_program(ast_program: &AstProgram) -> Result<AsmProgram, AsmParseError> {
     let mut program = AsmProgram::new();
     for node in &ast_program.functions {
-        program = parse_node(program, node)?;
+        parse_node(&mut program, node)?;
     }
     Ok(program)
 }
