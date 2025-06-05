@@ -1,10 +1,9 @@
-use std::{io::Write, iter::zip};
+use std::iter::zip;
 
 use crate::{
     bonobo::{
         asm::{
-            AsmInstruction, AsmOperand, AsmProgram, Emit,
-            emitter::EmitError,
+            AsmInstruction, AsmOperand, AsmProgram,
             operand::{AL, FN_ARG_REG, RAX, RBP, RCX, RDI, RDX, RSP, TRUE},
         },
         ast::{AstProgram, FunctionCall},
@@ -296,15 +295,10 @@ fn parse_node(program: AsmProgram, node: &Node) -> Result<AsmProgram, AsmParseEr
     }
 }
 
-fn parse_ast_program(ast_program: &AstProgram) -> Result<AsmProgram, AsmParseError> {
+pub fn parse_ast_program(ast_program: &AstProgram) -> Result<AsmProgram, AsmParseError> {
     let mut program = AsmProgram::new();
     for node in &ast_program.functions {
         program = parse_node(program, node)?;
     }
     Ok(program)
-}
-
-pub fn emit_asm_code(ast_program: AstProgram, writer: &mut dyn Write) -> Result<(), EmitError> {
-    let program = parse_ast_program(&ast_program)?;
-    program.emit(writer)
 }
