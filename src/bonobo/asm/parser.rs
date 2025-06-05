@@ -165,8 +165,8 @@ fn parse_binary_expression(
             program.add_instruction(AsmInstruction::Push(RDI));
         }
         BinaryOperation::Subtract => {
-            program.add_instruction(AsmInstruction::Pop(RCX));
-            program.add_instruction(AsmInstruction::Pop(RDI));
+            program.add_instruction(AsmInstruction::Pop(RCX)); // RHS
+            program.add_instruction(AsmInstruction::Pop(RDI)); // LHS
             program.add_instruction(AsmInstruction::Subtract(RCX, RDI));
             program.add_instruction(AsmInstruction::Push(RDI));
         }

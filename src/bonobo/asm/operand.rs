@@ -9,7 +9,7 @@ macro_rules! xor {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AsmInstruction {
     Label(AsmOperand),                      // Should always be a label
     Move(AsmOperand, AsmOperand),           // src, dst
@@ -30,10 +30,11 @@ pub enum AsmInstruction {
     Cqo,
     Return,
     Syscall,
+    Nop,
     FnCall(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AsmOperand {
     Register(AsmRegister),
     Immediate(i64),
@@ -42,7 +43,7 @@ pub enum AsmOperand {
     StackBase(i64),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AsmRegister {
     Rax,
     Rbx,

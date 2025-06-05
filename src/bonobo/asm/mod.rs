@@ -1,6 +1,7 @@
 pub mod emitter;
 pub mod main;
 pub mod operand;
+pub mod optimizer;
 pub mod parser;
 pub mod program;
 

@@ -80,6 +80,7 @@ impl Emit for AsmInstruction {
             AsmInstruction::Cqo => writeln!(writer, "\t\tcqo")?,
             AsmInstruction::Syscall => writeln!(writer, "\t\tsyscall")?,
             AsmInstruction::Return => writeln!(writer, "\t\tret")?,
+            AsmInstruction::Nop => writeln!(writer, "\t\tnop")?,
             AsmInstruction::FnCall(s) => writeln!(writer, "\t\tcall\t{}", s)?,
         }
         Ok(())
