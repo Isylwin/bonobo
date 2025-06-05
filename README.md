@@ -10,7 +10,6 @@
     - Type verification for AST -> TypedAST
     - Semantic verification -> e.g. function must provide return statement
 - Assembly frontend
-    - Split up to module
     - Write optimizer for assembly frontend
     - Fix booboo doodoo 32 bytes of reserved space for local stack
     - Allow for more than 4 args to a function call

@@ -3,11 +3,11 @@ use std::io::{BufReader, BufWriter, prelude::*};
 
 use anyhow::Result;
 
-use as_frontend::emit;
+use asm::emit;
 use ast::parse;
 use lexer::Lexer;
 
-mod as_frontend;
+mod asm;
 mod ast;
 mod lexer;
 
