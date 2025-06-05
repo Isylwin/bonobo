@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::collections::{HashMap, HashSet};
+
 use crate::bonobo::asm::{
     AsmInstruction, AsmOperand, AsmProgram,
     operand::{AsmRegister, FALSE, RAX, TRUE},
@@ -10,8 +12,6 @@ pub fn optimize(program: &mut AsmProgram) {
     let mut x = AsmOptimizer::new();
     x.optimize_program(program);
 }
-
-use std::collections::{HashMap, HashSet};
 
 pub struct AsmOptimizer {
     // Track which registers are modified by each instruction
@@ -34,7 +34,7 @@ impl AsmOptimizer {
     }
 
     /// Optimize a single section
-    pub fn optimize_section(&mut self, section: &mut AsmSection) {
+    fn optimize_section(&mut self, section: &mut AsmSection) {
         let mut optimized = true;
         let mut passes = 0;
         const MAX_PASSES: usize = 10;
@@ -226,11 +226,25 @@ impl AsmOptimizer {
     }
 
     /// Peephole optimization: look for specific patterns and replace them
-    fn peephole_optimize(&mut self, instructions: &mut [AsmInstruction]) -> bool {
-        let changed = false;
+    fn peephole_optimize(&mut self, instructions: &mut Vec<AsmInstruction>) -> bool {
+        let mut changed = false;
         let mut i = 0;
 
         while i + 1 < instructions.len() {
+            // Optimize RAX usage as communication register
+            // mov reg, src; mov dst, reg -> move dst, src
+            if let (AsmInstruction::Move(src1, dst1), AsmInstruction::Move(src2, dst2)) =
+                (&instructions[i], &instructions[i + 1])
+            {
+                if operands_equal(dst1, src2) && operands_equal(dst1, &RAX) {
+                    // Remove second move and replace first with src1, dst2
+                    instructions[i] = AsmInstruction::Move(src1.clone(), dst2.clone());
+                    instructions.remove(i + 1);
+                    changed = true;
+                    continue;
+                }
+            }
+
             i += 1;
         }
 
@@ -289,7 +303,7 @@ fn operands_equal(op1: &AsmOperand, op2: &AsmOperand) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::bonobo::asm::operand::{AsmRegister, FALSE, RAX, RBX, RCX, RDX};
+    use crate::bonobo::asm::operand::{AsmRegister, FALSE, RAX, RBX, RCX, RDI, RDX};
 
     use super::*;
 
@@ -416,6 +430,26 @@ mod tests {
 
         optimizer.optimize_arithmetic(&mut instructions);
         assert_eq!(instructions.len(), 1); // Only return should remain
+    }
+
+    #[test]
+    fn test_peephole_optimization() {
+        let mut optimizer = AsmOptimizer::new();
+        let mut instructions = vec![
+            AsmInstruction::Move(AsmOperand::StackBase(-8), RDI),
+            AsmInstruction::Move(RDI, RAX),
+            AsmInstruction::Return,
+        ];
+
+        optimizer.peephole_optimize(&mut instructions);
+        assert_eq!(instructions.len(), 2);
+
+        if let AsmInstruction::Move(src, dst) = &instructions[0] {
+            assert!(matches!(src, AsmOperand::StackBase(-8)));
+            assert!(matches!(dst, &RAX));
+        } else {
+            panic!("Expected peephole optimizer to optimize superfluous move");
+        }
     }
 
     #[test]
