@@ -1,0 +1,49 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'bonobo'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=bonobo",
+                    "--package=bonobo"
+                ],
+                "filter": {
+                    "name": "bonobo",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "examples/function_call.bnb",
+                "-o",
+                "out/lldb_debug.asm"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'bonobo'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=bonobo",
+                    "--package=bonobo"
+                ],
+                "filter": {
+                    "name": "bonobo",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

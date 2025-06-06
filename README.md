@@ -36,6 +36,10 @@
 - [Rust](https://www.rust-lang.org/tools/install)
 - [just](https://github.com/casey/just) for running utility commands
 
+## Development
+
+The repository contains a `launch.json`, which is intended to be used with VS code and the LLDB debugger.
+
 # Platform support
 
 ## Operating system
