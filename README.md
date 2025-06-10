@@ -10,7 +10,8 @@
     - Type verification for AST -> TypedAST
     - Semantic verification -> e.g. function must provide return statement
 - Assembly frontend
-    - Write optimizer for assembly frontend
+    - Write more optimizer routines
+        - Try to find more 
     - Fix booboo doodoo 32 bytes of reserved space for local stack
     - Allow for more than 4 args to a function call
 - Grammar
@@ -23,8 +24,11 @@
     - Write more std functions for Bonobo
         - print to output and read from input
     - argc and argv
+- Testing
+    - Bonobo program which tests its own language -> some verification pipeline
+    - Compile code as optimized and non-optimized -> should provide same output
 - General
-    - Bonobo program which tests its own language
+    - Optimization flags as cli arguments
     - More intricate verbosity
     - More logging with increased verbosity
     - Allow stdin as input
